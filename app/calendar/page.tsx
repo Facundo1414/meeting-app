@@ -129,6 +129,14 @@ export default function CalendarPage() {
             Calendar
           </h1>
           <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => router.push('/messages')} 
+              className="relative bg-blue-500 text-white hover:bg-blue-600 border-blue-600"
+            >
+              💬 Mensajes
+            </Button>
             <Button variant="ghost" size="sm" onClick={loadSlots} title="Refrescar">
               🔄
             </Button>

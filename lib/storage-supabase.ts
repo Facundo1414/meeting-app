@@ -140,3 +140,73 @@ export async function getAllSlotsForDate(date: string): Promise<TimeSlot[]> {
   const allSlots = await getTimeSlots();
   return allSlots.filter((s) => s.date === date);
 }
+
+// Messages
+export interface Message {
+  id: string;
+  senderId: string;
+  senderUsername: string;
+  message: string;
+  timestamp: string;
+}
+
+// Get all messages
+export async function getMessages(): Promise<Message[]> {
+  try {
+    const { data, error } = await supabase
+      .from("messages_meeting_app")
+      .select("*")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching messages:", error);
+      return [];
+    }
+
+    return (data || []).map((msg) => ({
+      id: msg.id,
+      senderId: msg.sender_id,
+      senderUsername: msg.sender_username,
+      message: msg.message,
+      timestamp: msg.created_at,
+    }));
+  } catch (error) {
+    console.error("Error in getMessages:", error);
+    return [];
+  }
+}
+
+// Send a message
+export async function sendMessage(
+  senderId: string,
+  senderUsername: string,
+  message: string
+): Promise<Message | null> {
+  try {
+    const { data, error } = await supabase
+      .from("messages_meeting_app")
+      .insert({
+        sender_id: senderId,
+        sender_username: senderUsername,
+        message: message,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error sending message:", error);
+      return null;
+    }
+
+    return {
+      id: data.id,
+      senderId: data.sender_id,
+      senderUsername: data.sender_username,
+      message: data.message,
+      timestamp: data.created_at,
+    };
+  } catch (error) {
+    console.error("Error in sendMessage:", error);
+    return null;
+  }
+}
