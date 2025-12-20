@@ -162,6 +162,13 @@ export interface Message {
   message: string;
   timestamp: string;
   readBy?: string[];
+  mediaUrl?: string;
+  mediaType?: "image" | "video";
+  reactions?: Array<{ userId: string; emoji: string }>;
+  replyToId?: string;
+  replyToMessage?: string;
+  replyToSender?: string;
+  editedAt?: string;
 }
 
 // Get all messages
@@ -184,6 +191,13 @@ export async function getMessages(): Promise<Message[]> {
       message: msg.message,
       timestamp: msg.created_at,
       readBy: msg.read_by || [],
+      mediaUrl: msg.media_url,
+      mediaType: msg.media_type,
+      reactions: msg.reactions || [],
+      replyToId: msg.reply_to_id,
+      replyToMessage: msg.reply_to_message,
+      replyToSender: msg.reply_to_sender,
+      editedAt: msg.edited_at,
     }));
   } catch (error) {
     console.error("Error in getMessages:", error);
@@ -195,7 +209,12 @@ export async function getMessages(): Promise<Message[]> {
 export async function sendMessage(
   senderId: string,
   senderUsername: string,
-  message: string
+  message: string,
+  mediaUrl?: string,
+  mediaType?: "image" | "video",
+  replyToId?: string,
+  replyToMessage?: string,
+  replyToSender?: string
 ): Promise<Message | null> {
   try {
     const { data, error } = await supabase
@@ -204,6 +223,11 @@ export async function sendMessage(
         sender_id: senderId,
         sender_username: senderUsername,
         message: message,
+        media_url: mediaUrl,
+        media_type: mediaType,
+        reply_to_id: replyToId,
+        reply_to_message: replyToMessage,
+        reply_to_sender: replyToSender,
       })
       .select()
       .single();
@@ -220,10 +244,41 @@ export async function sendMessage(
       message: data.message,
       timestamp: data.created_at,
       readBy: data.read_by || [],
+      mediaUrl: data.media_url,
+      mediaType: data.media_type,
+      replyToId: data.reply_to_id,
+      replyToMessage: data.reply_to_message,
+      replyToSender: data.reply_to_sender,
     };
   } catch (error) {
     console.error("Error in sendMessage:", error);
     return null;
+  }
+}
+
+// Edit a message
+export async function editMessage(
+  messageId: string,
+  newText: string
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from("messages_meeting_app")
+      .update({
+        message: newText,
+        edited_at: new Date().toISOString(),
+      })
+      .eq("id", messageId);
+
+    if (error) {
+      console.error("Error editing message:", error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error in editMessage:", error);
+    return false;
   }
 }
 
@@ -259,6 +314,189 @@ export async function markMessagesAsRead(
     return true;
   } catch (error) {
     console.error("Error in markMessagesAsRead:", error);
+    return false;
+  }
+}
+
+// Compress image before upload
+export async function compressImage(
+  file: File,
+  maxSizeMB: number = 1
+): Promise<File> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+
+        // Max dimensions
+        const MAX_WIDTH = 1920;
+        const MAX_HEIGHT = 1920;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        // Convert to blob with quality adjustment
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              resolve(file);
+            }
+          },
+          "image/jpeg",
+          0.8 // Quality 80%
+        );
+      };
+    };
+  });
+}
+
+// Upload file to Supabase Storage
+export async function uploadMedia(
+  file: File,
+  userId: string
+): Promise<string | null> {
+  try {
+    // Compress if it's an image
+    let fileToUpload = file;
+    if (file.type.startsWith("image/")) {
+      fileToUpload = await compressImage(file);
+    }
+
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${userId}/${Date.now()}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from("meeting-app-media")
+      .upload(fileName, fileToUpload, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (error) {
+      console.error("Error uploading file:", error);
+      return null;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from("meeting-app-media")
+      .getPublicUrl(fileName);
+
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error("Error in uploadMedia:", error);
+    return null;
+  }
+}
+
+// Delete message and its media file
+export async function deleteMessage(
+  messageId: string,
+  mediaUrl?: string
+): Promise<boolean> {
+  try {
+    // Delete media file from storage if exists
+    if (mediaUrl) {
+      const urlParts = mediaUrl.split("/");
+      const fileName = urlParts.slice(-2).join("/"); // Get "userId/timestamp.ext"
+
+      await supabase.storage.from("meeting-app-media").remove([fileName]);
+    }
+
+    // Delete message from database
+    const { error } = await supabase
+      .from("messages_meeting_app")
+      .delete()
+      .eq("id", messageId);
+
+    if (error) {
+      console.error("Error deleting message:", error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error in deleteMessage:", error);
+    return false;
+  }
+}
+
+// Add or toggle reaction to message
+export async function toggleReaction(
+  messageId: string,
+  userId: string,
+  emoji: string
+): Promise<boolean> {
+  try {
+    // Get current message
+    const { data: message, error: fetchError } = await supabase
+      .from("messages_meeting_app")
+      .select("reactions")
+      .eq("id", messageId)
+      .single();
+
+    if (fetchError) {
+      console.error("Error fetching message for reaction:", fetchError);
+      return false;
+    }
+
+    let reactions = message.reactions || [];
+
+    // Check if user already reacted with this emoji
+    const existingIndex = reactions.findIndex(
+      (r: any) => r.userId === userId && r.emoji === emoji
+    );
+
+    if (existingIndex >= 0) {
+      // Remove reaction
+      reactions.splice(existingIndex, 1);
+    } else {
+      // Remove any other reaction from this user first
+      reactions = reactions.filter((r: any) => r.userId !== userId);
+      // Add new reaction
+      reactions.push({ userId, emoji });
+    }
+
+    // Update message
+    const { error: updateError } = await supabase
+      .from("messages_meeting_app")
+      .update({ reactions })
+      .eq("id", messageId);
+
+    if (updateError) {
+      console.error("Error updating reaction:", updateError);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error in toggleReaction:", error);
     return false;
   }
 }

@@ -245,11 +245,11 @@ export default function CalendarPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20">
       <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
-        <div className="flex items-center justify-between p-4">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+        <div className="flex items-center justify-between p-2 gap-2">
+          <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
             Calendar
           </h1>
-          <div className="flex gap-2">
+          <div className="flex gap-1 items-center">
             <Button 
               variant="outline" 
               size="sm" 
@@ -260,37 +260,35 @@ export default function CalendarPage() {
                 }
                 router.push('/messages');
               }}
-              className="relative bg-blue-500 text-white hover:bg-blue-600 border-blue-600"
+              className="relative bg-blue-500 text-white hover:bg-blue-600 border-blue-600 px-2 text-xs h-8"
             >
-              💬 Mensajes
+              💬
               {unreadCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold text-[10px]">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
             </Button>
-            <Button variant="ghost" size="sm" onClick={toggleDarkMode} title="Cambiar tema">
+            <Button variant="ghost" size="sm" onClick={toggleDarkMode} title="Cambiar tema" className="px-2 h-8">
               {darkMode ? '☀️' : '🌙'}
             </Button>
-            <Button variant="ghost" size="sm" onClick={loadSlots} title="Refrescar">
-              🔄
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleLogout}>
+            <Button variant="outline" size="sm" onClick={handleLogout} className="px-2 text-xs h-8">
               Salir
             </Button>
           </div>
         </div>
-        <div className="flex items-center justify-between p-4 border-t">
+        <div className="flex items-center justify-between px-4 py-2 border-t dark:border-gray-700">
           <Button 
             variant="outline" 
             size="sm" 
             onClick={() => changeDate(-1)}
             disabled={isBeforeToday()}
+            className="dark:border-gray-600 dark:text-gray-200 h-8"
           >
             ← 
           </Button>
-          <span className="font-medium text-sm capitalize text-center">{formatDate(selectedDate)}</span>
-          <Button variant="outline" size="sm" onClick={() => changeDate(1)}>
+          <span className="font-medium text-sm capitalize text-center dark:text-gray-200">{formatDate(selectedDate)}</span>
+          <Button variant="outline" size="sm" onClick={() => changeDate(1)} className="dark:border-gray-600 dark:text-gray-200 h-8">
             →
           </Button>
         </div>
@@ -307,14 +305,15 @@ export default function CalendarPage() {
         </Button>
 
         {/* Tu disponibilidad */}
-        <Card className="shadow-lg">
+        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Tu disponibilidad</CardTitle>
+              <CardTitle className="text-lg dark:text-gray-100">Tu disponibilidad</CardTitle>
               <Button 
                 size="sm" 
                 onClick={() => showForm ? cancelEdit() : setShowForm(true)}
                 variant={showForm ? "outline" : "default"}
+                className={showForm ? "dark:border-gray-600 dark:text-gray-200" : ""}
               >
                 {showForm ? 'Cancelar' : '+ Agregar'}
               </Button>
@@ -322,10 +321,10 @@ export default function CalendarPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {showForm && (
-              <div className="p-4 bg-blue-50 rounded-lg space-y-3 border-2 border-blue-200">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg space-y-3 border-2 border-blue-200 dark:border-blue-800">
                 {/* Selector de tipo de evento */}
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Tipo de evento</label>
+                  <label className="text-sm font-medium mb-2 block dark:text-gray-200">Tipo de evento</label>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       type="button"
@@ -373,7 +372,7 @@ export default function CalendarPage() {
                     setEndHour('24');
                   }}
                   variant="outline"
-                  className="w-full border-dashed"
+                  className="w-full border-dashed dark:border-gray-600 dark:text-gray-200"
                   type="button"
                 >
                   🕐 Todo el día (00:00 - 24:00)
@@ -381,32 +380,32 @@ export default function CalendarPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-sm font-medium mb-1 block">Desde</label>
+                    <label className="text-sm font-medium mb-1 block dark:text-gray-200">Desde</label>
                     <Input
                       type="number"
                       min="0"
                       max="23"
                       value={startHour}
                       onChange={(e) => setStartHour(e.target.value)}
-                      className="w-full"
+                      className="w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       placeholder="Ej: 9"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       {startHour ? `${startHour.padStart(2, '0')}:00` : 'Hora'}
                     </p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium mb-1 block">Hasta</label>
+                    <label className="text-sm font-medium mb-1 block dark:text-gray-200">Hasta</label>
                     <Input
                       type="number"
                       min="1"
                       max="24"
                       value={endHour}
                       onChange={(e) => setEndHour(e.target.value)}
-                      className="w-full"
+                      className="w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                       placeholder="Ej: 18"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                       {endHour ? `${endHour.padStart(2, '0')}:00` : 'Hora'}
                     </p>
                   </div>
@@ -419,7 +418,7 @@ export default function CalendarPage() {
                     variant="outline"
                     size="sm"
                     type="button"
-                    className="text-xs"
+                    className="text-xs dark:border-gray-600 dark:text-gray-200"
                   >
                     Mañana (9-13)
                   </Button>
@@ -428,7 +427,7 @@ export default function CalendarPage() {
                     variant="outline"
                     size="sm"
                     type="button"
-                    className="text-xs"
+                    className="text-xs dark:border-gray-600 dark:text-gray-200"
                   >
                     Tarde (13-18)
                   </Button>
@@ -437,7 +436,7 @@ export default function CalendarPage() {
                     variant="outline"
                     size="sm"
                     type="button"
-                    className="text-xs"
+                    className="text-xs dark:border-gray-600 dark:text-gray-200"
                   >
                     Noche (18-22)
                   </Button>
@@ -447,6 +446,7 @@ export default function CalendarPage() {
                   placeholder="Nota opcional..."
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
+                  className="dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
                 />
                 <Button onClick={saveSlot} className="w-full">
                   {editingSlotId ? '✏️ Actualizar' : 
@@ -459,7 +459,7 @@ export default function CalendarPage() {
             )}
 
             {mySlots.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 <p className="text-sm">No tienes eventos para este día</p>
                 <p className="text-xs mt-1">Toca "+ Agregar" para crear uno</p>
               </div>
@@ -469,34 +469,34 @@ export default function CalendarPage() {
                   const type = slot.eventType || 'unavailable';
                   
                   // Definir clases completas para cada tipo
-                  let bgClass = 'bg-red-50';
-                  let borderClass = 'border-red-200';
-                  let textClass = 'text-red-900';
+                  let bgClass = 'bg-red-50 dark:bg-red-950';
+                  let borderClass = 'border-red-200 dark:border-red-800';
+                  let textClass = 'text-red-900 dark:text-red-200';
                   let emoji = '🔴';
                   let label = 'Ocupado';
                   
                   if (type === 'plan') {
-                    bgClass = 'bg-green-50';
-                    borderClass = 'border-green-200';
-                    textClass = 'text-green-900';
+                    bgClass = 'bg-green-50 dark:bg-green-950';
+                    borderClass = 'border-green-200 dark:border-green-800';
+                    textClass = 'text-green-900 dark:text-green-200';
                     emoji = '🟢';
                     label = 'Plan';
                   } else if (type === 'meeting') {
-                    bgClass = 'bg-blue-50';
-                    borderClass = 'border-blue-200';
-                    textClass = 'text-blue-900';
+                    bgClass = 'bg-blue-50 dark:bg-blue-950';
+                    borderClass = 'border-blue-200 dark:border-blue-800';
+                    textClass = 'text-blue-900 dark:text-blue-200';
                     emoji = '🔵';
                     label = 'Reunión';
                   } else if (type === 'tentative') {
-                    bgClass = 'bg-yellow-50';
-                    borderClass = 'border-yellow-200';
-                    textClass = 'text-yellow-900';
+                    bgClass = 'bg-yellow-50 dark:bg-yellow-950';
+                    borderClass = 'border-yellow-200 dark:border-yellow-800';
+                    textClass = 'text-yellow-900 dark:text-yellow-200';
                     emoji = '🟡';
                     label = 'Charlemos';
                   } else if (type === 'other') {
-                    bgClass = 'bg-purple-50';
-                    borderClass = 'border-purple-200';
-                    textClass = 'text-purple-900';
+                    bgClass = 'bg-purple-50 dark:bg-purple-950';
+                    borderClass = 'border-purple-200 dark:border-purple-800';
+                    textClass = 'text-purple-900 dark:text-purple-200';
                     emoji = '🟣';
                     label = 'Otro';
                   }
@@ -511,9 +511,9 @@ export default function CalendarPage() {
                         <div className={`font-semibold ${textClass}`}>
                           {emoji} {parseInt(slot.startTime).toString().padStart(2, '0')}:00 - {parseInt(slot.endTime).toString().padStart(2, '0')}:00
                         </div>
-                        <div className="text-xs text-gray-600 mt-0.5">{label}</div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{label}</div>
                         {slot.note && (
-                          <div className="text-sm text-gray-700 mt-1">{slot.note}</div>
+                          <div className="text-sm text-gray-700 dark:text-gray-300 mt-1">{slot.note}</div>
                         )}
                       </div>
                       <div className="flex gap-1">
@@ -521,7 +521,7 @@ export default function CalendarPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => startEditSlot(slot)}
-                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-950"
                         >
                           ✏️
                         </Button>
@@ -529,7 +529,7 @@ export default function CalendarPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => removeSlot(slot.id)}
-                          className="text-red-600 hover:text-red-800 hover:bg-red-100"
+                          className="text-red-600 hover:text-red-800 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950"
                         >
                           ✕
                         </Button>
@@ -544,16 +544,16 @@ export default function CalendarPage() {
         </Card>
 
         {/* Disponibilidad del otro usuario */}
-        <Card className="shadow-lg">
+        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Eventos del otro usuario</CardTitle>
+            <CardTitle className="text-lg dark:text-gray-100">Eventos del otro usuario</CardTitle>
           </CardHeader>
           <CardContent>
             {otherSlots.length === 0 ? (
               <div className="text-center py-8">
                 <div className="text-4xl mb-2">✅</div>
-                <p className="text-green-700 font-medium">Sin eventos</p>
-                <p className="text-sm text-gray-500 mt-1">No tiene eventos para este día</p>
+                <p className="text-green-700 dark:text-green-400 font-medium">Sin eventos</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">No tiene eventos para este día</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -561,34 +561,34 @@ export default function CalendarPage() {
                   const type = slot.eventType || 'unavailable';
                   
                   // Definir clases completas para cada tipo
-                  let bgClass = 'bg-red-50';
-                  let borderClass = 'border-red-200';
-                  let textClass = 'text-red-900';
+                  let bgClass = 'bg-red-50 dark:bg-red-950';
+                  let borderClass = 'border-red-200 dark:border-red-800';
+                  let textClass = 'text-red-900 dark:text-red-200';
                   let emoji = '🔴';
                   let label = 'Ocupado';
                   
                   if (type === 'plan') {
-                    bgClass = 'bg-green-50';
-                    borderClass = 'border-green-200';
-                    textClass = 'text-green-900';
+                    bgClass = 'bg-green-50 dark:bg-green-950';
+                    borderClass = 'border-green-200 dark:border-green-800';
+                    textClass = 'text-green-900 dark:text-green-200';
                     emoji = '🟢';
                     label = 'Plan';
                   } else if (type === 'meeting') {
-                    bgClass = 'bg-blue-50';
-                    borderClass = 'border-blue-200';
-                    textClass = 'text-blue-900';
+                    bgClass = 'bg-blue-50 dark:bg-blue-950';
+                    borderClass = 'border-blue-200 dark:border-blue-800';
+                    textClass = 'text-blue-900 dark:text-blue-200';
                     emoji = '🔵';
                     label = 'Reunión';
                   } else if (type === 'tentative') {
-                    bgClass = 'bg-yellow-50';
-                    borderClass = 'border-yellow-200';
-                    textClass = 'text-yellow-900';
+                    bgClass = 'bg-yellow-50 dark:bg-yellow-950';
+                    borderClass = 'border-yellow-200 dark:border-yellow-800';
+                    textClass = 'text-yellow-900 dark:text-yellow-200';
                     emoji = '🟡';
                     label = 'Charlemos';
                   } else if (type === 'other') {
-                    bgClass = 'bg-purple-50';
-                    borderClass = 'border-purple-200';
-                    textClass = 'text-purple-900';
+                    bgClass = 'bg-purple-50 dark:bg-purple-950';
+                    borderClass = 'border-purple-200 dark:border-purple-800';
+                    textClass = 'text-purple-900 dark:text-purple-200';
                     emoji = '🟣';
                     label = 'Otro';
                   }
@@ -601,9 +601,9 @@ export default function CalendarPage() {
                     <div className={`font-semibold ${textClass}`}>
                       {emoji} {parseInt(slot.startTime).toString().padStart(2, '0')}:00 - {parseInt(slot.endTime).toString().padStart(2, '0')}:00
                     </div>
-                    <div className="text-xs text-gray-600 mt-0.5">{label}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{label}</div>
                     {slot.note && (
-                      <div className="text-sm text-gray-700 mt-1">{slot.note}</div>
+                      <div className="text-sm text-gray-700 dark:text-gray-300 mt-1">{slot.note}</div>
                     )}
                   </div>
                   );
@@ -617,15 +617,15 @@ export default function CalendarPage() {
                   // Solo mostrar mensaje de disponibilidad si hay tiempo libre
                   if (totalBusyHours < 24) {
                     return (
-                      <div className="text-center mt-4 p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                        <p className="text-sm text-green-700">El resto del día está disponible ✅</p>
+                      <div className="text-center mt-4 p-3 bg-green-50 dark:bg-green-950 rounded-lg border-2 border-green-200 dark:border-green-800">
+                        <p className="text-sm text-green-700 dark:text-green-300">El resto del día está disponible ✅</p>
                       </div>
                     );
                   }
                   
                   return (
-                    <div className="text-center mt-4 p-3 bg-red-50 rounded-lg border-2 border-red-200">
-                      <p className="text-sm text-red-700">❌ No disponible todo el día</p>
+                    <div className="text-center mt-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg border-2 border-red-200 dark:border-red-800">
+                      <p className="text-sm text-red-700 dark:text-red-300">❌ No disponible todo el día</p>
                     </div>
                   );
                 })()}
