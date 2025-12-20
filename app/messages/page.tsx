@@ -1,13 +1,131 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { User } from '@/lib/auth-supabase';
 import { Message, getMessages, sendMessage } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { PageTransition } from '@/components/page-transition';
+
+// Audio Player Component estilo WhatsApp
+function AudioPlayer({ src, isOwn }: { src: string; isOwn: boolean }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleLoadedMetadata = () => {
+      setDuration(audio.duration);
+    };
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+    };
+
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, []);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    
+    const newTime = parseFloat(e.target.value);
+    audio.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return '0:00';
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="flex items-center gap-2 min-w-[240px] max-w-[280px]">
+      <audio ref={audioRef} src={src} preload="metadata" />
+      
+      <button
+        onClick={togglePlay}
+        className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+          isOwn 
+            ? 'bg-white/20 hover:bg-white/30 text-white' 
+            : 'bg-blue-500 hover:bg-blue-600 text-white'
+        }`}
+      >
+        {isPlaying ? (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <rect x="3" y="2" width="4" height="12" />
+            <rect x="9" y="2" width="4" height="12" />
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4 2 L4 14 L13 8 Z" />
+          </svg>
+        )}
+      </button>
+
+      <div className="flex-1 flex flex-col gap-1">
+        <input
+          type="range"
+          min="0"
+          max={duration || 0}
+          value={currentTime}
+          onChange={handleSeek}
+          className={`w-full h-1 rounded-full appearance-none cursor-pointer ${
+            isOwn 
+              ? 'audio-slider-own' 
+              : 'audio-slider'
+          }`}
+          style={{
+            background: isOwn 
+              ? `linear-gradient(to right, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.8) ${(currentTime / duration) * 100}%, rgba(255,255,255,0.2) ${(currentTime / duration) * 100}%, rgba(255,255,255,0.2) 100%)`
+              : `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(currentTime / duration) * 100}%, #d1d5db ${(currentTime / duration) * 100}%, #d1d5db 100%)`
+          }}
+        />
+        <div className="flex justify-between text-xs opacity-70">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function MessagesPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -33,6 +151,7 @@ export default function MessagesPage() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [otherUserOnline, setOtherUserOnline] = useState(false);
   const [otherUserLastSeen, setOtherUserLastSeen] = useState<string | null>(null);
+  const [deleteMessageData, setDeleteMessageData] = useState<{id: string; mediaUrl?: string} | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const presenceChannelRef = useRef<any>(null);
@@ -221,9 +340,10 @@ export default function MessagesPage() {
       if (success) {
         setNewMessage('');
         setEditingMessage(null);
+        toast.success('Mensaje editado');
         await loadMessages();
       } else {
-        alert('Error al editar el mensaje');
+        toast.error('Error al editar el mensaje');
       }
       return;
     }
@@ -241,7 +361,7 @@ export default function MessagesPage() {
       setUploading(false);
       
       if (!mediaUrl) {
-        alert('Error al subir el archivo. Intenta de nuevo.');
+        toast.error('Error al subir el archivo');
         return;
       }
       
@@ -272,24 +392,32 @@ export default function MessagesPage() {
     setTimeout(() => scrollToBottom(), 100);
 
     // Enviar al servidor en segundo plano
-    const sent = await sendMessage(
-      user.id, 
-      user.username, 
-      messageText, 
-      mediaUrl || undefined, 
-      mediaType,
-      replyTo?.id,
-      replyTo?.message,
-      replyTo?.sender
-    );
-    
-    // Clear reply state
-    setReplyTo(null);
-    
-    // Si falló, remover el mensaje optimista
-    if (!sent) {
+    try {
+      const sent = await sendMessage(
+        user.id, 
+        user.username, 
+        messageText, 
+        mediaUrl || undefined, 
+        mediaType,
+        replyTo?.id,
+        replyTo?.message,
+        replyTo?.sender
+      );
+      
+      // Clear reply state
+      setReplyTo(null);
+      
+      // Si falló, remover el mensaje optimista
+      if (!sent) {
+        setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+        setNewMessage(messageText); // Restaurar el texto
+        toast.error('Error al enviar mensaje. Verifica tu conexión.');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
       setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
       setNewMessage(messageText); // Restaurar el texto
+      toast.error('Error inesperado al enviar mensaje');
     }
   };
 
@@ -435,16 +563,23 @@ export default function MessagesPage() {
       return;
     }
     
-    if (!confirm('¿Seguro que quieres borrar este mensaje?')) return;
+    setDeleteMessageData({ id: messageId, mediaUrl });
+  };
+
+  const confirmDeleteMessage = async () => {
+    if (!deleteMessageData) return;
     
     const { deleteMessage } = await import('@/lib/storage-supabase');
-    const success = await deleteMessage(messageId, mediaUrl);
+    const success = await deleteMessage(deleteMessageData.id, deleteMessageData.mediaUrl);
     
     if (success) {
-      setMessages(prev => prev.filter(m => m.id !== messageId));
+      setMessages(prev => prev.filter(m => m.id !== deleteMessageData.id));
+      toast.success('Mensaje eliminado');
     } else {
-      alert('Error al borrar el mensaje');
+      toast.error('Error al borrar el mensaje');
     }
+    
+    setDeleteMessageData(null);
   };
 
   const handleCameraCapture = () => {
@@ -482,19 +617,18 @@ export default function MessagesPage() {
     try {
       await navigator.clipboard.writeText(text);
       setShowMenu(null);
-      // Simple feedback visual
-      alert('Texto copiado');
+      toast.success('Texto copiado al portapapeles');
     } catch (err) {
       console.error('Error copiando texto:', err);
-      alert('No se pudo copiar el texto');
+      toast.error('No se pudo copiar el texto');
     }
   };
 
   const handleReplyTo = (msg: Message) => {
     setReplyTo({
       id: msg.id,
-      message: msg.message || '(Media)',
-      sender: msg.senderId === '1' ? 'Facu' : 'Bren'
+      message: msg.message || (msg.mediaType === 'image' ? '📷 Imagen' : msg.mediaType === 'video' ? '🎥 Video' : msg.mediaType === 'audio' ? '🎤 Audio' : 'Archivo'),
+      sender: msg.senderUsername
     });
     setShowMenu(null);
     setShowReactions(null);
@@ -678,7 +812,7 @@ export default function MessagesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <PageTransition className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-3 sticky top-0 z-10">
         <div className="flex flex-col">
@@ -1096,6 +1230,18 @@ export default function MessagesPage() {
           </Button>
         </div>
       </div>
-    </div>
+
+      {/* Confirm Dialog para eliminar mensaje */}
+      <ConfirmDialog
+        isOpen={!!deleteMessageData}
+        onClose={() => setDeleteMessageData(null)}
+        onConfirm={confirmDeleteMessage}
+        title="Eliminar Mensaje"
+        message="¿Estás seguro de que quieres eliminar este mensaje? Esta acción no se puede deshacer."
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        variant="danger"
+      />
+    </PageTransition>
   );
 }

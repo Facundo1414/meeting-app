@@ -1,12 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { User } from '@/lib/auth-supabase';
 import { TimeSlot, getTimeSlots } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { CalendarMonthSkeleton } from '@/components/calendar-skeleton';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
+import { PullToRefreshIndicator } from '@/components/pull-to-refresh';
+import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
+import { PageTransition } from '@/components/page-transition';
+import { SyncIndicator } from '@/components/sync-indicator';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -17,7 +25,23 @@ export default function MonthViewPage() {
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+
+  // Swipe navigation
+  useSwipeNavigation({
+    onSwipeLeft: () => changeMonth(1),
+    onSwipeRight: () => changeMonth(-1),
+  });
+
+  // Pull to refresh
+  const { containerRef, pullDistance, isRefreshing } = usePullToRefresh({
+    onRefresh: async () => {
+      await loadSlots();
+      toast.success('Calendario actualizado');
+    },
+  });
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -63,17 +87,23 @@ export default function MonthViewPage() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showProfileMenu]);
 
-  const loadSlots = async () => {
-    const data = await getTimeSlots();
-    setSlots(data);
-  };
+  const loadSlots = useCallback(async () => {
+    try {
+      setIsSyncing(true);
+      const data = await getTimeSlots();
+      setSlots(data);
+    } finally {
+      setIsSyncing(false);
+      setIsLoading(false);
+    }
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
     router.push('/');
   };
 
-  const toggleDarkMode = () => {
+  const toggleDarkMode = useCallback(() => {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
     localStorage.setItem('darkMode', String(newDarkMode));
@@ -82,7 +112,7 @@ export default function MonthViewPage() {
     } else {
       document.documentElement.classList.remove('dark');
     }
-  };
+  }, [darkMode]);
 
   const changeMonth = (months: number) => {
     const newDate = new Date(currentMonth);
@@ -90,7 +120,8 @@ export default function MonthViewPage() {
     setCurrentMonth(newDate);
   };
 
-  const getMonthDays = (): Date[] => {
+  // Memoize expensive month calculation
+  const monthDays = useMemo(() => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
     const firstDay = new Date(year, month, 1);
@@ -120,23 +151,23 @@ export default function MonthViewPage() {
     }
     
     return days;
-  };
+  }, [currentMonth]);
 
-  const getDateString = (date: Date): string => {
+  const getDateString = useCallback((date: Date): string => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  };
+  }, []);
 
-  const getDaySlots = (date: Date): { my: TimeSlot[], other: TimeSlot[] } => {
+  const getDaySlots = useCallback((date: Date): { my: TimeSlot[], other: TimeSlot[] } => {
     const dateStr = getDateString(date);
     const otherUserId = user?.id === '1' ? '2' : '1';
     return {
       my: slots.filter(s => s.userId === user?.id && s.date === dateStr),
       other: slots.filter(s => s.userId === otherUserId && s.date === dateStr),
     };
-  };
+  }, [slots, user?.id, getDateString]);
 
   const isToday = (date: Date): boolean => {
     const today = new Date();
@@ -157,12 +188,22 @@ export default function MonthViewPage() {
 
   if (!user) return null;
 
-  const monthDays = getMonthDays();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4">
+        <CalendarMonthSkeleton />
+      </div>
+    );
+  }
+
   const otherUserId = user.id === '1' ? '2' : '1';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-6">
-      <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
+    <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-6 overflow-auto">
+      <div ref={containerRef} className="h-full overflow-auto">
+        <SyncIndicator isSyncing={isSyncing} />
+        <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} />
+        <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
         <div className="flex items-center justify-between p-4">
           <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
@@ -180,7 +221,7 @@ export default function MonthViewPage() {
               {darkMode ? '☀️' : '🌙'}
             </button>
           </div>
-          <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+          <h1 className="text-base font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             {currentMonth.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }).toUpperCase()}
           </h1>
           
@@ -197,7 +238,7 @@ export default function MonthViewPage() {
             {showProfileMenu && (
               <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl z-50 overflow-hidden">
                 {/* Perfil */}
-                <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-500">
+                <div className="p-4 bg-linear-to-r from-blue-500 to-purple-500">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-700 flex items-center justify-center text-2xl">
                       {user?.username.charAt(0).toUpperCase()}
@@ -274,7 +315,18 @@ export default function MonthViewPage() {
         </div>
 
         {/* Grid de días */}
-        <div className="grid grid-cols-7 gap-1">
+        <motion.div 
+          className="grid grid-cols-7 gap-1"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            visible: {
+              transition: {
+                staggerChildren: 0.01
+              }
+            }
+          }}
+        >
           {monthDays.map((day, index) => {
             const { my: mySlots, other: otherSlots } = getDaySlots(day);
             const today = isToday(day);
@@ -282,17 +334,23 @@ export default function MonthViewPage() {
             const past = isPast(day);
 
             return (
-              <div
+              <motion.div
                 key={index}
+                variants={{
+                  hidden: { opacity: 0, scale: 0.8 },
+                  visible: { opacity: 1, scale: 1 }
+                }}
                 onClick={() => {
                   if (!past) {
-                    // Navegar al día específico en la vista de día
+                    toast.success(`📅 ${day.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}`);
                     localStorage.setItem('selectedDate', day.toISOString());
                     router.push('/calendar');
                   }
                 }}
+                whileHover={!past ? { scale: 1.05 } : {}}
+                whileTap={!past ? { scale: 0.95 } : {}}
                 className={`
-                  min-h-[80px] p-2 rounded-lg border cursor-pointer transition-all
+                  min-h-20 p-2 rounded-lg border cursor-pointer transition-all
                   ${today ? 'ring-2 ring-blue-400 bg-blue-50 dark:bg-blue-900/30' : ''}
                   ${!currentMo ? 'opacity-40' : ''}
                   ${past ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}
@@ -334,11 +392,12 @@ export default function MonthViewPage() {
                     <div className="text-[10px] text-gray-500 dark:text-gray-400">+{(mySlots.length + otherSlots.length) - 4}</div>
                   )}
                 </div>
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
-    </div>
+      </div>
+    </PageTransition>
   );
 }

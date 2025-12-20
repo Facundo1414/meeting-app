@@ -192,3 +192,56 @@
 .animation-delay-4000 {
   animation-delay: 4s;
 }
+
+/* Audio Player Styles - WhatsApp inspired */
+.audio-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.audio-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.audio-slider-own::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.audio-slider-own::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.audio-slider::-webkit-slider-runnable-track,
+.audio-slider-own::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+}
+
+.audio-slider::-moz-range-track,
+.audio-slider-own::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+}

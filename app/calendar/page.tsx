@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
+import { LoadingButton } from '@/components/ui/loading-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { User } from '@/lib/auth-supabase';
@@ -11,11 +12,13 @@ import { TimeSlot, getTimeSlots, addTimeSlot, deleteTimeSlot } from '@/lib/stora
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { CalendarDaySkeleton } from '@/components/calendar-skeleton';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { PullToRefreshIndicator } from '@/components/pull-to-refresh';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
+import { PageTransition } from '@/components/page-transition';
 import { SyncIndicator } from '@/components/sync-indicator';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
@@ -35,6 +38,8 @@ export default function CalendarPage() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [deleteSlotId, setDeleteSlotId] = useState<string | null>(null);
   const router = useRouter();
 
   // Swipe navigation
@@ -45,12 +50,13 @@ export default function CalendarPage() {
     },
   });
 
-  // Pull to refresh
+  // Pull to refresh - con threshold más alto para evitar activaciones accidentales
   const { containerRef, pullDistance, isRefreshing } = usePullToRefresh({
     onRefresh: async () => {
       await loadSlots();
       toast.success('Actualizado');
     },
+    threshold: 100, // Aumentado de 80 a 100 para evitar activaciones accidentales
   });
 
   useEffect(() => {
@@ -141,7 +147,7 @@ export default function CalendarPage() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showProfileMenu]);
 
-  const loadSlots = async () => {
+  const loadSlots = useCallback(async () => {
     try {
       setIsSyncing(true);
       const data = await getTimeSlots();
@@ -150,14 +156,14 @@ export default function CalendarPage() {
       setIsSyncing(false);
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
     router.push('/');
   };
 
-  const toggleDarkMode = () => {
+  const toggleDarkMode = useCallback(() => {
     const newDarkMode = !darkMode;
     setDarkMode(newDarkMode);
     localStorage.setItem('darkMode', String(newDarkMode));
@@ -166,9 +172,9 @@ export default function CalendarPage() {
     } else {
       document.documentElement.classList.remove('dark');
     }
-  };
+  }, [darkMode]);
 
-  const formatDate = (date: Date) => {
+  const formatDate = useCallback((date: Date) => {
     return date.toLocaleDateString('es-AR', {
       timeZone: TIMEZONE,
       weekday: 'long',
@@ -176,15 +182,15 @@ export default function CalendarPage() {
       month: 'long',
       day: 'numeric',
     });
-  };
+  }, []);
 
-  const getDateString = (date: Date) => {
+  const getDateString = useCallback((date: Date) => {
     // Usar el timezone local para evitar desfases por UTC
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  };
+  }, []);
 
   const changeDate = (days: number) => {
     const newDate = new Date(selectedDate);
@@ -228,45 +234,50 @@ export default function CalendarPage() {
 
     const dateStr = getDateString(selectedDate);
     
-    if (editingSlotId) {
-      // Editar slot existente
-      const { updateTimeSlot } = await import('@/lib/storage-supabase');
-      await updateTimeSlot(editingSlotId, {
-        startTime: start.toString(),
-        endTime: end.toString(),
-        isUnavailable: eventType === 'unavailable',
-        eventType: eventType,
-        note: note || undefined,
-      });
-      toast.success('Evento actualizado');
-    } else {
-      // Crear nuevo slot
-      await addTimeSlot({
-        userId: user.id,
-        date: dateStr,
-        startTime: start.toString(),
-        endTime: end.toString(),
-        isUnavailable: eventType === 'unavailable',
-        eventType: eventType,
-        note: note || undefined,
-      });
-      toast.success('Evento creado');
-    }
+    try {
+      setIsSaving(true);
+      
+      if (editingSlotId) {
+        // Editar slot existente
+        const { updateTimeSlot } = await import('@/lib/storage-supabase');
+        await updateTimeSlot(editingSlotId, {
+          startTime: start.toString(),
+          endTime: end.toString(),
+          isUnavailable: eventType === 'unavailable',
+          eventType: eventType,
+          note: note || undefined,
+        });
+        toast.success('Evento actualizado');
+      } else {
+        // Crear nuevo slot
+        await addTimeSlot({
+          userId: user.id,
+          date: dateStr,
+          startTime: start.toString(),
+          endTime: end.toString(),
+          isUnavailable: eventType === 'unavailable',
+          eventType: eventType,
+          note: note || undefined,
+        });
+        toast.success('Evento creado');
+      }
 
-    setStartHour('9');
-    setEndHour('18');
-    setNote('');
-    setEventType('unavailable');
-    setShowForm(false);
-    setEditingSlotId(null);
-    await loadSlots();
+      setStartHour('9');
+      setEndHour('18');
+      setNote('');
+      setEventType('unavailable');
+      setShowForm(false);
+      setEditingSlotId(null);
+      await loadSlots();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const removeSlot = async (id: string) => {
     await deleteTimeSlot(id);
     toast.success('Evento eliminado');
-    await loadSlots();
-  };
+    await loadSlots();    setDeleteSlotId(null);  };
 
   const startEditSlot = (slot: TimeSlot) => {
     setEditingSlotId(slot.id);
@@ -290,7 +301,7 @@ export default function CalendarPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4">
+      <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4">
         <CalendarDaySkeleton />
       </div>
     );
@@ -301,11 +312,12 @@ export default function CalendarPage() {
   const otherSlots = getUserSlots(otherUserId);
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 overflow-auto">
-      <SyncIndicator isSyncing={isSyncing} />
-      <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} />
-      
-      <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
+    <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 overflow-auto">
+      <div ref={containerRef} className="h-full overflow-auto">
+        <SyncIndicator isSyncing={isSyncing} />
+        <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} />
+        
+        <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
         <div className="flex items-center justify-between p-2 gap-2">
           <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
@@ -323,7 +335,7 @@ export default function CalendarPage() {
               {darkMode ? '☀️' : '🌙'}
             </button>
           </div>
-          <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
+          <h1 className="text-base font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
             Calendar
           </h1>
           <div className="flex gap-1 items-center">
@@ -367,7 +379,7 @@ export default function CalendarPage() {
               {showProfileMenu && (
                 <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl z-50 overflow-hidden">
                   {/* Perfil */}
-                  <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-500">
+                  <div className="p-4 bg-linear-to-r from-blue-500 to-purple-500">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-700 flex items-center justify-center text-2xl">
                         {user?.username.charAt(0).toUpperCase()}
@@ -431,153 +443,14 @@ export default function CalendarPage() {
               <CardTitle className="text-lg dark:text-gray-100">Tu disponibilidad</CardTitle>
               <Button 
                 size="sm" 
-                onClick={() => showForm ? cancelEdit() : setShowForm(true)}
-                variant={showForm ? "outline" : "default"}
-                className={showForm ? "dark:border-gray-600 dark:text-gray-200" : ""}
+                onClick={() => setShowForm(true)}
+                variant="default"
               >
-                {showForm ? 'Cancelar' : '+ Agregar'}
+                + Agregar
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {showForm && (
-              <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg space-y-3 border-2 border-blue-200 dark:border-blue-800">
-                {/* Selector de tipo de evento */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block dark:text-gray-200">Tipo de evento</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      variant={eventType === 'unavailable' ? 'default' : 'outline'}
-                      className={eventType === 'unavailable' ? 'bg-red-500 hover:bg-red-600' : ''}
-                      onClick={() => setEventType('unavailable')}
-                      size="sm"
-                    >
-                      🔴 Ocupado
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={eventType === 'plan' ? 'default' : 'outline'}
-                      className={eventType === 'plan' ? 'bg-green-500 hover:bg-green-600' : ''}
-                      onClick={() => setEventType('plan')}
-                      size="sm"
-                    >
-                      🟢 Plan
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={eventType === 'meeting' ? 'default' : 'outline'}
-                      className={eventType === 'meeting' ? 'bg-blue-500 hover:bg-blue-600' : ''}
-                      onClick={() => setEventType('meeting')}
-                      size="sm"
-                    >
-                      🔵 Reunión
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={eventType === 'tentative' ? 'default' : 'outline'}
-                      className={eventType === 'tentative' ? 'bg-yellow-500 hover:bg-yellow-600' : ''}
-                      onClick={() => setEventType('tentative')}
-                      size="sm"
-                    >
-                      🟡 Charlemos
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Botón de todo el día */}
-                <Button 
-                  onClick={() => {
-                    setStartHour('0');
-                    setEndHour('24');
-                  }}
-                  variant="outline"
-                  className="w-full border-dashed dark:border-gray-600 dark:text-gray-200"
-                  type="button"
-                >
-                  🕐 Todo el día (00:00 - 24:00)
-                </Button>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium mb-1 block dark:text-gray-200">Desde</label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max="23"
-                      value={startHour}
-                      onChange={(e) => setStartHour(e.target.value)}
-                      className="w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                      placeholder="Ej: 9"
-                    />
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {startHour ? `${startHour.padStart(2, '0')}:00` : 'Hora'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-1 block dark:text-gray-200">Hasta</label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="24"
-                      value={endHour}
-                      onChange={(e) => setEndHour(e.target.value)}
-                      className="w-full dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                      placeholder="Ej: 18"
-                    />
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {endHour ? `${endHour.padStart(2, '0')}:00` : 'Hora'}
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Botones rápidos */}
-                <div className="grid grid-cols-3 gap-2">
-                  <Button
-                    onClick={() => { setStartHour('9'); setEndHour('13'); }}
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    className="text-xs dark:border-gray-600 dark:text-gray-200"
-                  >
-                    Mañana (9-13)
-                  </Button>
-                  <Button
-                    onClick={() => { setStartHour('13'); setEndHour('18'); }}
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    className="text-xs dark:border-gray-600 dark:text-gray-200"
-                  >
-                    Tarde (13-18)
-                  </Button>
-                  <Button
-                    onClick={() => { setStartHour('18'); setEndHour('22'); }}
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    className="text-xs dark:border-gray-600 dark:text-gray-200"
-                  >
-                    Noche (18-22)
-                  </Button>
-                </div>
-
-                <Input
-                  placeholder="Nota opcional..."
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
-                />
-                <Button onClick={saveSlot} className="w-full">
-                  {editingSlotId ? '✏️ Actualizar' : 
-                   (eventType === 'unavailable' ? '🔴 Guardar ocupado' : 
-                    eventType === 'plan' ? '🟢 Guardar plan' : 
-                    eventType === 'meeting' ? '🔵 Guardar reunión' : 
-                    eventType === 'tentative' ? '🟡 Guardar charlemos' : 'Guardar')}
-                </Button>
-              </div>
-            )}
-
             {mySlots.length === 0 ? (
               <EmptyState type="calendar" />
             ) : (
@@ -660,7 +533,7 @@ export default function CalendarPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => removeSlot(slot.id)}
+                          onClick={() => setDeleteSlotId(slot.id)}
                           className="text-red-600 hover:text-red-800 hover:bg-red-100 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950"
                         >
                           ✕
@@ -766,6 +639,167 @@ export default function CalendarPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+
+      {/* Bottom Sheet para agregar/editar eventos */}
+      <BottomSheet
+        isOpen={showForm}
+        onClose={cancelEdit}
+        title={editingSlotId ? 'Editar Evento' : 'Nuevo Evento'}
+      >
+        <div className="space-y-4">
+          {/* Selector de tipo de evento */}
+          <div>
+            <label className="text-sm font-medium mb-2 block">Tipo de evento</label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={eventType === 'unavailable' ? 'default' : 'outline'}
+                className={eventType === 'unavailable' ? 'bg-red-500 hover:bg-red-600' : ''}
+                onClick={() => setEventType('unavailable')}
+                size="sm"
+              >
+                🔴 Ocupado
+              </Button>
+              <Button
+                type="button"
+                variant={eventType === 'plan' ? 'default' : 'outline'}
+                className={eventType === 'plan' ? 'bg-green-500 hover:bg-green-600' : ''}
+                onClick={() => setEventType('plan')}
+                size="sm"
+              >
+                🟢 Plan
+              </Button>
+              <Button
+                type="button"
+                variant={eventType === 'meeting' ? 'default' : 'outline'}
+                className={eventType === 'meeting' ? 'bg-blue-500 hover:bg-blue-600' : ''}
+                onClick={() => setEventType('meeting')}
+                size="sm"
+              >
+                🔵 Reunión
+              </Button>
+              <Button
+                type="button"
+                variant={eventType === 'tentative' ? 'default' : 'outline'}
+                className={eventType === 'tentative' ? 'bg-yellow-500 hover:bg-yellow-600' : ''}
+                onClick={() => setEventType('tentative')}
+                size="sm"
+              >
+                🟡 Charlemos
+              </Button>
+            </div>
+          </div>
+
+          {/* Botón de todo el día */}
+          <Button 
+            onClick={() => {
+              setStartHour('0');
+              setEndHour('24');
+            }}
+            variant="outline"
+            className="w-full border-dashed"
+            type="button"
+          >
+            🕐 Todo el día (00:00 - 24:00)
+          </Button>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Desde</label>
+              <Input
+                type="number"
+                min="0"
+                max="23"
+                value={startHour}
+                onChange={(e) => setStartHour(e.target.value)}
+                className="w-full"
+                placeholder="Ej: 9"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {startHour ? `${startHour.padStart(2, '0')}:00` : 'Hora'}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Hasta</label>
+              <Input
+                type="number"
+                min="1"
+                max="24"
+                value={endHour}
+                onChange={(e) => setEndHour(e.target.value)}
+                className="w-full"
+                placeholder="Ej: 18"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {endHour ? `${endHour.padStart(2, '0')}:00` : 'Hora'}
+              </p>
+            </div>
+          </div>
+          
+          {/* Botones rápidos */}
+          <div className="grid grid-cols-3 gap-2">
+            <Button
+              onClick={() => { setStartHour('9'); setEndHour('13'); }}
+              variant="outline"
+              size="sm"
+              type="button"
+              className="text-xs"
+            >
+              Mañana
+            </Button>
+            <Button
+              onClick={() => { setStartHour('13'); setEndHour('18'); }}
+              variant="outline"
+              size="sm"
+              type="button"
+              className="text-xs"
+            >
+              Tarde
+            </Button>
+            <Button
+              onClick={() => { setStartHour('18'); setEndHour('22'); }}
+              variant="outline"
+              size="sm"
+              type="button"
+              className="text-xs"
+            >
+              Noche
+            </Button>
+          </div>
+
+          <Input
+            placeholder="Nota opcional..."
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <LoadingButton 
+            onClick={saveSlot} 
+            className="w-full" 
+            size="lg"
+            isLoading={isSaving}
+            loadingText="Guardando..."
+          >
+            {editingSlotId ? '✏️ Actualizar Evento' : 
+             (eventType === 'unavailable' ? '🔴 Guardar Ocupado' : 
+              eventType === 'plan' ? '🟢 Guardar Plan' : 
+              eventType === 'meeting' ? '🔵 Guardar Reunión' : 
+              eventType === 'tentative' ? '🟡 Guardar Charlemos' : 'Guardar Evento')}
+          </LoadingButton>
+        </div>
+      </BottomSheet>
+
+      {/* Confirm Dialog para eliminar */}
+      <ConfirmDialog
+        isOpen={!!deleteSlotId}
+        onClose={() => setDeleteSlotId(null)}
+        onConfirm={() => deleteSlotId && removeSlot(deleteSlotId)}
+        title="Eliminar Evento"
+        message="¿Estás seguro de que quieres eliminar este evento? Esta acción no se puede deshacer."
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        variant="danger"
+      />
+      </div>
+    </PageTransition>
   );
 }

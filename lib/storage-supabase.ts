@@ -217,6 +217,15 @@ export async function sendMessage(
   replyToSender?: string
 ): Promise<Message | null> {
   try {
+    console.log("Sending message:", {
+      senderId,
+      senderUsername,
+      message,
+      mediaUrl,
+      mediaType,
+      replyToId,
+    });
+
     const { data, error } = await supabase
       .from("messages_meeting_app")
       .insert({
@@ -234,8 +243,11 @@ export async function sendMessage(
 
     if (error) {
       console.error("Error sending message:", error);
+      console.error("Error details:", JSON.stringify(error, null, 2));
       return null;
     }
+
+    console.log("Message sent successfully:", data);
 
     return {
       id: data.id,
@@ -252,6 +264,8 @@ export async function sendMessage(
     };
   } catch (error) {
     console.error("Error in sendMessage:", error);
+    console.error("Error type:", typeof error);
+    console.error("Error stringified:", JSON.stringify(error, null, 2));
     return null;
   }
 }
