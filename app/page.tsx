@@ -52,14 +52,14 @@ export default function LoginPage() {
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
         <Card className={`w-full max-w-md relative z-10 shadow-xl ${shake ? 'animate-shake' : ''}`}>
           <CardHeader className="space-y-1">
             <motion.div
-              initial={{ scale: 0 }}
+              initial={false}
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
             >
@@ -75,7 +75,7 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <motion.div 
                 className="space-y-2"
-                initial={{ opacity: 0, x: -20 }}
+                initial={false}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
               >
@@ -94,7 +94,7 @@ export default function LoginPage() {
               </motion.div>
               <motion.div 
                 className="space-y-2"
-                initial={{ opacity: 0, x: -20 }}
+                initial={false}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.4 }}
               >
@@ -113,7 +113,7 @@ export default function LoginPage() {
               </motion.div>
               {error && (
                 <motion.p
-                  initial={{ opacity: 0, y: -10 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
                   className="text-sm text-red-600"
                 >
@@ -121,7 +121,7 @@ export default function LoginPage() {
                 </motion.p>
               )}
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={false}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
               >

@@ -11,120 +11,8 @@ import { Message, getMessages, sendMessage } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { PageTransition } from '@/components/page-transition';
+import { AudioPlayer as SmartAudioPlayer } from '@/components/audio-player';
 
-// Audio Player Component estilo WhatsApp
-function AudioPlayer({ src, isOwn }: { src: string; isOwn: boolean }) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const audioRef = useRef<HTMLAudioElement>(null);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const handleLoadedMetadata = () => {
-      setDuration(audio.duration);
-    };
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
-    };
-
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
-    };
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('ended', handleEnded);
-
-    return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('ended', handleEnded);
-    };
-  }, []);
-
-  const togglePlay = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (isPlaying) {
-      audio.pause();
-    } else {
-      audio.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    
-    const newTime = parseFloat(e.target.value);
-    audio.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
-
-  const formatTime = (time: number) => {
-    if (isNaN(time)) return '0:00';
-    const mins = Math.floor(time / 60);
-    const secs = Math.floor(time % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  return (
-    <div className="flex items-center gap-2 min-w-[240px] max-w-[280px]">
-      <audio ref={audioRef} src={src} preload="metadata" />
-      
-      <button
-        onClick={togglePlay}
-        className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
-          isOwn 
-            ? 'bg-white/20 hover:bg-white/30 text-white' 
-            : 'bg-blue-500 hover:bg-blue-600 text-white'
-        }`}
-      >
-        {isPlaying ? (
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <rect x="3" y="2" width="4" height="12" />
-            <rect x="9" y="2" width="4" height="12" />
-          </svg>
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4 2 L4 14 L13 8 Z" />
-          </svg>
-        )}
-      </button>
-
-      <div className="flex-1 flex flex-col gap-1">
-        <input
-          type="range"
-          min="0"
-          max={duration || 0}
-          value={currentTime}
-          onChange={handleSeek}
-          className={`w-full h-1 rounded-full appearance-none cursor-pointer ${
-            isOwn 
-              ? 'audio-slider-own' 
-              : 'audio-slider'
-          }`}
-          style={{
-            background: isOwn 
-              ? `linear-gradient(to right, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.8) ${(currentTime / duration) * 100}%, rgba(255,255,255,0.2) ${(currentTime / duration) * 100}%, rgba(255,255,255,0.2) 100%)`
-              : `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${(currentTime / duration) * 100}%, #d1d5db ${(currentTime / duration) * 100}%, #d1d5db 100%)`
-          }}
-        />
-        <div className="flex justify-between text-xs opacity-70">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export default function MessagesPage() {
@@ -155,7 +43,7 @@ export default function MessagesPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const presenceChannelRef = useRef<any>(null);
-  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [touchStart, setTouchStart] = useState<{ x: number; time: number; messageId: string } | null>(null);
   const [lastTap, setLastTap] = useState<{ messageId: string; time: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -204,9 +92,8 @@ export default function MessagesPage() {
           if (payload.payload.userId !== currentUser.id) {
             setIsOtherUserTyping(true);
             // Clear after 3 seconds
-            if (typingTimeout) clearTimeout(typingTimeout);
-            const timeout = setTimeout(() => setIsOtherUserTyping(false), 3000);
-            setTypingTimeout(timeout);
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => setIsOtherUserTyping(false), 3000);
           }
         })
         .subscribe();
@@ -261,7 +148,7 @@ export default function MessagesPage() {
       if (presenceChannelRef.current) {
         supabase.removeChannel(presenceChannelRef.current);
       }
-      if (typingTimeout) clearTimeout(typingTimeout);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
     };
   }, [router]);
@@ -900,15 +787,14 @@ export default function MessagesPage() {
                       className="max-w-full rounded-lg max-h-80"
                     />
                   ) : msg.mediaType === 'audio' ? (
-                    <audio 
+                    <SmartAudioPlayer 
                       src={msg.mediaUrl} 
-                      controls 
-                      className="w-full max-w-xs"
+                      isOwn={msg.senderId === user?.id}
                     />
                   ) : null}
                 </div>
               )}
-              {msg.message && <div className="break-words">{msg.message}</div>}
+              {msg.message && <div className="wrap-break-word">{msg.message}</div>}
               <div className="text-xs opacity-70 mt-1 flex items-center gap-1">
                 {formatTime(msg.timestamp)}
                 {msg.editedAt && <span className="text-xs opacity-60">(editado)</span>}
@@ -940,7 +826,7 @@ export default function MessagesPage() {
             </div>
             {/* Menú contextual */}
             {showMenu === msg.id && (
-              <div className="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-1 min-w-[140px] z-50">
+              <div className="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-1 min-w-35 z-50">
                 <button
                   onClick={() => setShowReactions(msg.id)}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
@@ -1082,7 +968,7 @@ export default function MessagesPage() {
                 ✕
               </button>
             </div>
-            <audio src={URL.createObjectURL(audioBlob)} controls className="w-full mb-2" />
+            <audio src={URL.createObjectURL(audioBlob)} controls crossOrigin="anonymous" className="w-full mb-2" />
             <div className="flex gap-2">
               <Button 
                 size="sm" 
@@ -1144,7 +1030,7 @@ export default function MessagesPage() {
 
             {/* Menú desplegable de opciones */}
             {showAttachmentMenu && !isRecording && !audioBlob && (
-              <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-[180px] z-50">
+              <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-45 z-50">
                 <button
                   onClick={() => {
                     startRecording();

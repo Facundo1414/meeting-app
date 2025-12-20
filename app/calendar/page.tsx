@@ -53,7 +53,9 @@ export default function CalendarPage() {
       router.push('/');
       return;
     }
-    setUser(JSON.parse(userData));
+
+    const currentUser: User = JSON.parse(userData);
+    setUser(currentUser);
     
     // Cargar preferencia de dark mode
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
@@ -64,19 +66,14 @@ export default function CalendarPage() {
     
     loadSlots();
 
-    // Supabase Realtime subscription - solo actualiza cuando cambia algo relevante
+    // Supabase Realtime subscription - recarga siempre que haya cambios
     const channel = supabase
       .channel('time_slots_changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'time_slots_meeting_app' },
-        (payload) => {
-          // Solo recargar si el cambio es relevante para el usuario actual
-          if (payload.eventType === 'DELETE' || 
-              payload.new?.user_id === user?.id || 
-              payload.old?.user_id === user?.id) {
-            loadSlots();
-          }
+        () => {
+          loadSlots();
         }
       )
       .subscribe();
@@ -84,7 +81,7 @@ export default function CalendarPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [router]);
+  }, [router, loadSlots]);
 
   // Optimizar el callback de mensajes no leídos
   const checkUnreadMessages = useCallback(async () => {

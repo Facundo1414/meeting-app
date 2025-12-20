@@ -11,7 +11,8 @@ interface PageTransitionProps {
 export function PageTransition({ children, className }: PageTransitionProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
+      // Disable initial animation to avoid delaying first paint (LCP)
+      initial={false}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ duration: 0.15, ease: 'easeOut' }}

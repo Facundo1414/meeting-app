@@ -214,7 +214,7 @@ export default function MonthViewPage() {
       <div className="h-full overflow-auto">
         <SyncIndicator isSyncing={isSyncing} />
         <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
-        <div className="flex items-center justify-between p-4">
+        <div className="flex items-center justify-between p-4 h-16">
           <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               onClick={() => router.push('/calendar')}
@@ -327,7 +327,7 @@ export default function MonthViewPage() {
         {/* Grid de días */}
         <motion.div 
           className="grid grid-cols-7 gap-1"
-          initial="hidden"
+          initial={false}
           animate="visible"
           variants={{
             visible: {

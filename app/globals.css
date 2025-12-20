@@ -193,6 +193,17 @@
   animation-delay: 4s;
 }
 
+/* Prefer reduced motion: avoid heavy animations on initial load */
+@media (prefers-reduced-motion: reduce) {
+  .animate-blob,
+  .animate-shake,
+  .animate-bounce-in,
+  .animate-slide-up,
+  .animate-fade-in {
+    animation: none !important;
+  }
+}
+
 /* Audio Player Styles - WhatsApp inspired */
 .audio-slider::-webkit-slider-thumb {
   appearance: none;
