@@ -8,10 +8,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { User } from '@/lib/auth-supabase';
 import { TimeSlot, getTimeSlots } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
 import { CalendarMonthSkeleton } from '@/components/calendar-skeleton';
-import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
-import { PullToRefreshIndicator } from '@/components/pull-to-refresh';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { PageTransition } from '@/components/page-transition';
 import { SyncIndicator } from '@/components/sync-indicator';
@@ -26,21 +23,12 @@ export default function MonthViewPage() {
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   // Swipe navigation
   useSwipeNavigation({
     onSwipeLeft: () => changeMonth(1),
     onSwipeRight: () => changeMonth(-1),
-  });
-
-  // Pull to refresh
-  const { containerRef, pullDistance, isRefreshing } = usePullToRefresh({
-    onRefresh: async () => {
-      await loadSlots();
-      toast.success('Calendario actualizado');
-    },
   });
 
   useEffect(() => {
@@ -57,14 +45,17 @@ export default function MonthViewPage() {
     
     loadSlots();
 
-    // Supabase Realtime subscription
+    // Supabase Realtime subscription optimizada
     const channel = supabase
       .channel('time_slots_changes_month')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'time_slots_meeting_app' },
-        () => {
-          loadSlots();
+        (payload) => {
+          // Solo recargar cuando hay cambios reales
+          if (payload.eventType === 'DELETE' || payload.new || payload.old) {
+            loadSlots();
+          }
         }
       )
       .subscribe();
@@ -88,13 +79,24 @@ export default function MonthViewPage() {
   }, [showProfileMenu]);
 
   const loadSlots = useCallback(async () => {
+    // Cargar caché primero para render inmediato
+    const cached = localStorage.getItem('cachedSlots');
+    if (cached) {
+      try {
+        setSlots(JSON.parse(cached));
+      } catch (e) {
+        // Ignorar errores de parseo
+      }
+    }
+    
     try {
       setIsSyncing(true);
       const data = await getTimeSlots();
       setSlots(data);
+      // Guardar en caché
+      localStorage.setItem('cachedSlots', JSON.stringify(data));
     } finally {
       setIsSyncing(false);
-      setIsLoading(false);
     }
   }, []);
 
@@ -160,14 +162,31 @@ export default function MonthViewPage() {
     return `${year}-${month}-${day}`;
   }, []);
 
+  // Memoizar los slots por fecha para evitar filtros repetidos
+  const slotsByDate = useMemo(() => {
+    const map = new Map<string, { my: TimeSlot[], other: TimeSlot[] }>();
+    const otherUserId = user?.id === '1' ? '2' : '1';
+    
+    slots.forEach(slot => {
+      const key = slot.date;
+      if (!map.has(key)) {
+        map.set(key, { my: [], other: [] });
+      }
+      const daySlots = map.get(key)!;
+      if (slot.userId === user?.id) {
+        daySlots.my.push(slot);
+      } else if (slot.userId === otherUserId) {
+        daySlots.other.push(slot);
+      }
+    });
+    
+    return map;
+  }, [slots, user?.id]);
+
   const getDaySlots = useCallback((date: Date): { my: TimeSlot[], other: TimeSlot[] } => {
     const dateStr = getDateString(date);
-    const otherUserId = user?.id === '1' ? '2' : '1';
-    return {
-      my: slots.filter(s => s.userId === user?.id && s.date === dateStr),
-      other: slots.filter(s => s.userId === otherUserId && s.date === dateStr),
-    };
-  }, [slots, user?.id, getDateString]);
+    return slotsByDate.get(dateStr) || { my: [], other: [] };
+  }, [slotsByDate, getDateString]);
 
   const isToday = (date: Date): boolean => {
     const today = new Date();
@@ -188,21 +207,12 @@ export default function MonthViewPage() {
 
   if (!user) return null;
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4">
-        <CalendarMonthSkeleton />
-      </div>
-    );
-  }
-
   const otherUserId = user.id === '1' ? '2' : '1';
 
   return (
     <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-6 overflow-auto">
-      <div ref={containerRef} className="h-full overflow-auto">
+      <div className="h-full overflow-auto">
         <SyncIndicator isSyncing={isSyncing} />
-        <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} />
         <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
         <div className="flex items-center justify-between p-4">
           <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
@@ -332,17 +342,17 @@ export default function MonthViewPage() {
             const today = isToday(day);
             const currentMo = isCurrentMonth(day);
             const past = isPast(day);
+            const dateKey = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
 
             return (
               <motion.div
-                key={index}
+                key={dateKey}
                 variants={{
                   hidden: { opacity: 0, scale: 0.8 },
                   visible: { opacity: 1, scale: 1 }
                 }}
                 onClick={() => {
                   if (!past) {
-                    toast.success(`📅 ${day.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}`);
                     localStorage.setItem('selectedDate', day.toISOString());
                     router.push('/calendar');
                   }

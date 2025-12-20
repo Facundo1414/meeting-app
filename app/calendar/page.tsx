@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -10,13 +10,10 @@ import { Input } from '@/components/ui/input';
 import { User } from '@/lib/auth-supabase';
 import { TimeSlot, getTimeSlots, addTimeSlot, deleteTimeSlot } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { CalendarDaySkeleton } from '@/components/calendar-skeleton';
-import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
-import { PullToRefreshIndicator } from '@/components/pull-to-refresh';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { PageTransition } from '@/components/page-transition';
 import { SyncIndicator } from '@/components/sync-indicator';
@@ -37,10 +34,10 @@ export default function CalendarPage() {
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [deleteSlotId, setDeleteSlotId] = useState<string | null>(null);
   const router = useRouter();
+  const isChangingDate = useRef(false);
 
   // Swipe navigation
   useSwipeNavigation({
@@ -48,15 +45,6 @@ export default function CalendarPage() {
     onSwipeRight: () => {
       if (!isBeforeToday()) changeDate(-1);
     },
-  });
-
-  // Pull to refresh - con threshold más alto para evitar activaciones accidentales
-  const { containerRef, pullDistance, isRefreshing } = usePullToRefresh({
-    onRefresh: async () => {
-      await loadSlots();
-      toast.success('Actualizado');
-    },
-    threshold: 100, // Aumentado de 80 a 100 para evitar activaciones accidentales
   });
 
   useEffect(() => {
@@ -76,14 +64,19 @@ export default function CalendarPage() {
     
     loadSlots();
 
-    // Supabase Realtime subscription - se actualiza solo cuando hay cambios en la DB
+    // Supabase Realtime subscription - solo actualiza cuando cambia algo relevante
     const channel = supabase
       .channel('time_slots_changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'time_slots_meeting_app' },
-        () => {
-          loadSlots();
+        (payload) => {
+          // Solo recargar si el cambio es relevante para el usuario actual
+          if (payload.eventType === 'DELETE' || 
+              payload.new?.user_id === user?.id || 
+              payload.old?.user_id === user?.id) {
+            loadSlots();
+          }
         }
       )
       .subscribe();
@@ -93,27 +86,30 @@ export default function CalendarPage() {
     };
   }, [router]);
 
+  // Optimizar el callback de mensajes no leídos
+  const checkUnreadMessages = useCallback(async () => {
+    if (!user) return;
+    
+    const { getMessages } = await import('@/lib/storage-supabase');
+    const messages = await getMessages();
+    const lastReadTimestamp = localStorage.getItem(`lastReadMessage_${user.id}`);
+    
+    if (!lastReadTimestamp) {
+      // Si nunca leyó mensajes, contar todos los mensajes del otro usuario
+      const unread = messages.filter(m => m.senderId !== user.id).length;
+      setUnreadCount(unread);
+    } else {
+      // Contar mensajes posteriores a la última lectura del otro usuario
+      const unread = messages.filter(
+        m => m.senderId !== user.id && new Date(m.timestamp) > new Date(lastReadTimestamp)
+      ).length;
+      setUnreadCount(unread);
+    }
+  }, [user]);
+
   // Efecto para contar mensajes no leídos
   useEffect(() => {
     if (!user) return;
-    
-    const checkUnreadMessages = async () => {
-      const { getMessages } = await import('@/lib/storage-supabase');
-      const messages = await getMessages();
-      const lastReadTimestamp = localStorage.getItem(`lastReadMessage_${user.id}`);
-      
-      if (!lastReadTimestamp) {
-        // Si nunca leyó mensajes, contar todos los mensajes del otro usuario
-        const unread = messages.filter(m => m.senderId !== user.id).length;
-        setUnreadCount(unread);
-      } else {
-        // Contar mensajes posteriores a la última lectura del otro usuario
-        const unread = messages.filter(
-          m => m.senderId !== user.id && new Date(m.timestamp) > new Date(lastReadTimestamp)
-        ).length;
-        setUnreadCount(unread);
-      }
-    };
 
     checkUnreadMessages();
 
@@ -123,16 +119,14 @@ export default function CalendarPage() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages_meeting_app' },
-        () => {
-          checkUnreadMessages();
-        }
+        checkUnreadMessages
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(messagesChannel);
     };
-  }, [user]);
+  }, [user, checkUnreadMessages]);
 
   // Cerrar menú de perfil al hacer clic fuera
   useEffect(() => {
@@ -148,15 +142,26 @@ export default function CalendarPage() {
   }, [showProfileMenu]);
 
   const loadSlots = useCallback(async () => {
+    // Cargar caché primero para render inmediato
+    const cached = localStorage.getItem('cachedSlots');
+    if (cached) {
+      try {
+        setSlots(JSON.parse(cached));
+      } catch (e) {
+        // Ignorar errores de parseo
+      }
+    }
+    
     try {
       setIsSyncing(true);
       const data = await getTimeSlots();
       setSlots(data);
+      // Guardar en caché
+      localStorage.setItem('cachedSlots', JSON.stringify(data));
     } finally {
       setIsSyncing(false);
-      setIsLoading(false);
     }
-  }, []);
+  }, []); // Sin dependencias porque siempre carga todos los slots
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -193,17 +198,27 @@ export default function CalendarPage() {
   }, []);
 
   const changeDate = (days: number) => {
-    const newDate = new Date(selectedDate);
+    // Prevenir múltiples cambios simultáneos
+    if (isChangingDate.current) return;
+    isChangingDate.current = true;
+    
+    // Usar la fecha actual del estado, no crear nueva
+    const newDate = new Date(selectedDate.getTime());
     newDate.setDate(newDate.getDate() + days);
+    newDate.setHours(0, 0, 0, 0);
     
     // No permitir navegar a fechas pasadas
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    newDate.setHours(0, 0, 0, 0);
     
     if (newDate >= today) {
       setSelectedDate(newDate);
     }
+    
+    // Liberar el lock después de un breve delay
+    setTimeout(() => {
+      isChangingDate.current = false;
+    }, 200);
   };
 
   const isBeforeToday = () => {
@@ -216,10 +231,10 @@ export default function CalendarPage() {
     return yesterday < today;
   };
 
-  const getUserSlots = (userId: string) => {
+  const getUserSlots = useCallback((userId: string) => {
     const dateStr = getDateString(selectedDate);
     return slots.filter(s => s.userId === userId && s.date === dateStr);
-  };
+  }, [slots, selectedDate, getDateString]);
 
   const saveSlot = async () => {
     if (!user) return;
@@ -228,7 +243,6 @@ export default function CalendarPage() {
     const end = parseInt(endHour);
 
     if (start >= end) {
-      toast.error('La hora de fin debe ser mayor a la hora de inicio');
       return;
     }
 
@@ -247,7 +261,6 @@ export default function CalendarPage() {
           eventType: eventType,
           note: note || undefined,
         });
-        toast.success('Evento actualizado');
       } else {
         // Crear nuevo slot
         await addTimeSlot({
@@ -259,7 +272,6 @@ export default function CalendarPage() {
           eventType: eventType,
           note: note || undefined,
         });
-        toast.success('Evento creado');
       }
 
       setStartHour('9');
@@ -276,7 +288,6 @@ export default function CalendarPage() {
 
   const removeSlot = async (id: string) => {
     await deleteTimeSlot(id);
-    toast.success('Evento eliminado');
     await loadSlots();    setDeleteSlotId(null);  };
 
   const startEditSlot = (slot: TimeSlot) => {
@@ -297,25 +308,17 @@ export default function CalendarPage() {
     setShowForm(false);
   };
 
+  // Calcular slots antes de los returns condicionales (reglas de hooks)
+  const otherUserId = user?.id === '1' ? '2' : '1';
+  const mySlots = useMemo(() => user ? getUserSlots(user.id) : [], [getUserSlots, user]);
+  const otherSlots = useMemo(() => user ? getUserSlots(otherUserId) : [], [getUserSlots, otherUserId, user]);
+
   if (!user) return null;
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4">
-        <CalendarDaySkeleton />
-      </div>
-    );
-  }
-
-  const otherUserId = user.id === '1' ? '2' : '1';
-  const mySlots = getUserSlots(user.id);
-  const otherSlots = getUserSlots(otherUserId);
 
   return (
     <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 overflow-auto">
-      <div ref={containerRef} className="h-full overflow-auto">
+      <div className="h-full overflow-auto">
         <SyncIndicator isSyncing={isSyncing} />
-        <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} />
         
         <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
         <div className="flex items-center justify-between p-2 gap-2">

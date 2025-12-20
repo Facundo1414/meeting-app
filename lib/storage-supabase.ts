@@ -166,8 +166,6 @@ export interface Message {
   mediaType?: "image" | "video" | "audio";
   reactions?: Array<{ userId: string; emoji: string }>;
   replyToId?: string;
-  replyToMessage?: string;
-  replyToSender?: string;
   editedAt?: string;
 }
 
@@ -195,8 +193,6 @@ export async function getMessages(): Promise<Message[]> {
       mediaType: msg.media_type,
       reactions: msg.reactions || [],
       replyToId: msg.reply_to_id,
-      replyToMessage: msg.reply_to_message,
-      replyToSender: msg.reply_to_sender,
       editedAt: msg.edited_at,
     }));
   } catch (error) {
@@ -212,9 +208,7 @@ export async function sendMessage(
   message: string,
   mediaUrl?: string,
   mediaType?: "image" | "video" | "audio",
-  replyToId?: string,
-  replyToMessage?: string,
-  replyToSender?: string
+  replyToId?: string
 ): Promise<Message | null> {
   try {
     console.log("Sending message:", {
@@ -226,24 +220,31 @@ export async function sendMessage(
       replyToId,
     });
 
+    // Construir el objeto solo con campos que existen
+    const insertData: any = {
+      sender_id: senderId,
+      sender_username: senderUsername,
+      message: message,
+    };
+
+    // Solo agregar campos opcionales si tienen valor
+    if (mediaUrl) insertData.media_url = mediaUrl;
+    if (mediaType) insertData.media_type = mediaType;
+    if (replyToId) insertData.reply_to_id = replyToId;
+
     const { data, error } = await supabase
       .from("messages_meeting_app")
-      .insert({
-        sender_id: senderId,
-        sender_username: senderUsername,
-        message: message,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        reply_to_id: replyToId,
-        reply_to_message: replyToMessage,
-        reply_to_sender: replyToSender,
-      })
+      .insert(insertData)
       .select()
       .single();
 
     if (error) {
       console.error("Error sending message:", error);
-      console.error("Error details:", JSON.stringify(error, null, 2));
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+      console.error("Error hint:", error.hint);
+      console.error("Error details:", error.details);
+      console.error("Full error:", JSON.stringify(error, null, 2));
       return null;
     }
 
@@ -259,8 +260,6 @@ export async function sendMessage(
       mediaUrl: data.media_url,
       mediaType: data.media_type,
       replyToId: data.reply_to_id,
-      replyToMessage: data.reply_to_message,
-      replyToSender: data.reply_to_sender,
     };
   } catch (error) {
     console.error("Error in sendMessage:", error);

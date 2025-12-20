@@ -381,8 +381,6 @@ export default function MessagesPage() {
       mediaUrl: mediaUrl || undefined,
       mediaType,
       replyToId: replyTo?.id,
-      replyToMessage: replyTo?.message,
-      replyToSender: replyTo?.sender,
     };
 
     setMessages(prev => [...prev, optimisticMessage]);
@@ -399,9 +397,7 @@ export default function MessagesPage() {
         messageText, 
         mediaUrl || undefined, 
         mediaType,
-        replyTo?.id,
-        replyTo?.message,
-        replyTo?.sender
+        replyTo?.id
       );
       
       // Clear reply state
@@ -752,8 +748,6 @@ export default function MessagesPage() {
         mediaUrl,
         mediaType: 'audio',
         replyToId: replyTo?.id,
-        replyToMessage: replyTo?.message,
-        replyToSender: replyTo?.sender,
       };
 
       setMessages(prev => [...prev, optimisticMessage]);
@@ -768,9 +762,7 @@ export default function MessagesPage() {
         '',
         mediaUrl,
         'audio',
-        replyTo?.id,
-        replyTo?.message,
-        replyTo?.sender
+        replyTo?.id
       );
 
       setReplyTo(null);
@@ -882,12 +874,16 @@ export default function MessagesPage() {
               onClick={() => !msg.id.startsWith('temp-') && handleDoubleTap(msg)}
             >
               {/* Reply reference */}
-              {msg.replyToId && (
-                <div className="bg-black/10 dark:bg-white/10 border-l-2 border-white/50 pl-2 py-1 mb-2 rounded text-xs opacity-80">
-                  <div className="font-semibold">{msg.replyToSender}</div>
-                  <div className="truncate">{msg.replyToMessage}</div>
-                </div>
-              )}
+              {msg.replyToId && (() => {
+                const repliedMsg = messages.find(m => m.id === msg.replyToId);
+                if (!repliedMsg) return null;
+                return (
+                  <div className="bg-black/10 dark:bg-white/10 border-l-2 border-white/50 pl-2 py-1 mb-2 rounded text-xs opacity-80">
+                    <div className="font-semibold">{repliedMsg.senderUsername}</div>
+                    <div className="truncate">{repliedMsg.message || (repliedMsg.mediaType ? `📎 ${repliedMsg.mediaType}` : 'Mensaje')}</div>
+                  </div>
+                );
+              })()}
               {msg.mediaUrl && (
                 <div className="mb-2">
                   {msg.mediaType === 'image' ? (
