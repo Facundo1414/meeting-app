@@ -1,5 +1,12 @@
 import { supabase } from "./supabase";
 
+export type EventType =
+  | "unavailable"
+  | "plan"
+  | "meeting"
+  | "tentative"
+  | "other";
+
 export interface TimeSlot {
   id: string;
   userId: string;
@@ -7,6 +14,7 @@ export interface TimeSlot {
   startTime: string;
   endTime: string;
   isUnavailable: boolean;
+  eventType?: EventType;
   note?: string;
 }
 
@@ -31,6 +39,7 @@ export async function getTimeSlots(): Promise<TimeSlot[]> {
       startTime: slot.start_time,
       endTime: slot.end_time,
       isUnavailable: slot.is_unavailable,
+      eventType: slot.event_type || "unavailable",
       note: slot.note,
     }));
   } catch (error) {
@@ -52,6 +61,7 @@ export async function addTimeSlot(
         start_time: slot.startTime,
         end_time: slot.endTime,
         is_unavailable: slot.isUnavailable,
+        event_type: slot.eventType || "unavailable",
         note: slot.note,
       })
       .select()
@@ -69,6 +79,7 @@ export async function addTimeSlot(
       startTime: data.start_time,
       endTime: data.end_time,
       isUnavailable: data.is_unavailable,
+      eventType: data.event_type || "unavailable",
       note: data.note,
     };
   } catch (error) {
@@ -90,6 +101,8 @@ export async function updateTimeSlot(
     if (updates.endTime) dbUpdates.end_time = updates.endTime;
     if (updates.isUnavailable !== undefined)
       dbUpdates.is_unavailable = updates.isUnavailable;
+    if (updates.eventType !== undefined)
+      dbUpdates.event_type = updates.eventType;
     if (updates.note !== undefined) dbUpdates.note = updates.note;
 
     const { error } = await supabase
@@ -148,6 +161,7 @@ export interface Message {
   senderUsername: string;
   message: string;
   timestamp: string;
+  readBy?: string[];
 }
 
 // Get all messages
@@ -169,6 +183,7 @@ export async function getMessages(): Promise<Message[]> {
       senderUsername: msg.sender_username,
       message: msg.message,
       timestamp: msg.created_at,
+      readBy: msg.read_by || [],
     }));
   } catch (error) {
     console.error("Error in getMessages:", error);
@@ -204,9 +219,46 @@ export async function sendMessage(
       senderUsername: data.sender_username,
       message: data.message,
       timestamp: data.created_at,
+      readBy: data.read_by || [],
     };
   } catch (error) {
     console.error("Error in sendMessage:", error);
     return null;
+  }
+}
+
+// Mark messages as read
+export async function markMessagesAsRead(
+  messageIds: string[],
+  userId: string
+): Promise<boolean> {
+  try {
+    // Obtener los mensajes actuales
+    const { data: messages, error: fetchError } = await supabase
+      .from("messages_meeting_app")
+      .select("id, read_by")
+      .in("id", messageIds);
+
+    if (fetchError) {
+      console.error("Error fetching messages for read:", fetchError);
+      return false;
+    }
+
+    // Actualizar cada mensaje
+    for (const msg of messages || []) {
+      const readBy = msg.read_by || [];
+      if (!readBy.includes(userId)) {
+        readBy.push(userId);
+        await supabase
+          .from("messages_meeting_app")
+          .update({ read_by: readBy })
+          .eq("id", msg.id);
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error in markMessagesAsRead:", error);
+    return false;
   }
 }

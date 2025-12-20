@@ -13,6 +13,7 @@ export default function MessagesPage() {
   const [user, setUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [darkMode, setDarkMode] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -23,28 +24,55 @@ export default function MessagesPage() {
       return;
     }
     setUser(JSON.parse(userData));
-    loadMessages();
+    
+    // Cargar dark mode
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(savedDarkMode);
+    
+    // Cargar mensajes iniciales
+    const initMessages = async () => {
+      await loadMessages();
+      
+      // Solo suscribirse después de la carga inicial
+      const channel = supabase
+        .channel('messages_changes')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'messages_meeting_app' },
+          () => {
+            loadMessages();
+          }
+        )
+        .subscribe();
 
-    // Supabase Realtime subscription
-    const channel = supabase
-      .channel('messages_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'messages_meeting_app' },
-        () => {
-          loadMessages();
-        }
-      )
-      .subscribe();
+      return channel;
+    };
+
+    let channelPromise = initMessages();
 
     return () => {
-      supabase.removeChannel(channel);
+      channelPromise.then(channel => {
+        if (channel) supabase.removeChannel(channel);
+      });
     };
   }, [router]);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+    
+    // Marcar mensajes del otro usuario como leídos
+    if (user && messages.length > 0) {
+      const unreadMessages = messages
+        .filter(m => m.senderId !== user.id && !(m.readBy || []).includes(user.id))
+        .map(m => m.id);
+      
+      if (unreadMessages.length > 0) {
+        import('@/lib/storage-supabase').then(({ markMessagesAsRead }) => {
+          markMessagesAsRead(unreadMessages, user.id);
+        });
+      }
+    }
+  }, [messages, user]);
 
   const loadMessages = async () => {
     const data = await getMessages();
@@ -58,8 +86,29 @@ export default function MessagesPage() {
   const handleSend = async () => {
     if (!user || !newMessage.trim()) return;
 
-    await sendMessage(user.id, user.username, newMessage.trim());
+    const messageText = newMessage.trim();
     setNewMessage('');
+
+    // Agregar mensaje optimista inmediatamente
+    const optimisticMessage: Message = {
+      id: `temp-${Date.now()}`,
+      senderId: user.id,
+      senderUsername: user.username,
+      message: messageText,
+      timestamp: new Date().toISOString(),
+      readBy: [user.id],
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
+
+    // Enviar al servidor en segundo plano
+    const sent = await sendMessage(user.id, user.username, messageText);
+    
+    // Si falló, remover el mensaje optimista
+    if (!sent) {
+      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+      setNewMessage(messageText); // Restaurar el texto
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -80,22 +129,39 @@ export default function MessagesPage() {
     });
   };
 
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', String(newDarkMode));
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b p-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => router.push('/calendar')}
+            className="dark:border-gray-600 dark:text-gray-200"
           >
             ← Calendario
           </Button>
-          <h1 className="text-lg font-bold">Mensajes</h1>
+          <h1 className="text-lg font-bold dark:text-gray-100">Mensajes</h1>
         </div>
-        <div className="text-sm text-gray-600">
-          {user?.username}
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={toggleDarkMode} title="Cambiar tema">
+            {darkMode ? '☀️' : '🌙'}
+          </Button>
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            {user?.username}
+          </div>
         </div>
       </div>
 
@@ -110,15 +176,24 @@ export default function MessagesPage() {
               className={`max-w-[75%] rounded-lg p-3 ${
                 msg.senderId === user?.id
                   ? 'bg-blue-500 text-white'
-                  : 'bg-white border'
+                  : 'bg-white dark:bg-gray-700 border dark:border-gray-600 dark:text-gray-100'
               }`}
             >
               <div className="text-xs opacity-70 mb-1">
                 {msg.senderUsername}
               </div>
               <div className="break-words">{msg.message}</div>
-              <div className="text-xs opacity-70 mt-1">
+              <div className="text-xs opacity-70 mt-1 flex items-center gap-1">
                 {formatTime(msg.timestamp)}
+                {msg.senderId === user?.id && (
+                  <span>
+                    {(msg.readBy || []).length > 1 ? (
+                      <span className="text-blue-400">✓✓</span>
+                    ) : (
+                      <span className="opacity-50">✓✓</span>
+                    )}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -127,14 +202,14 @@ export default function MessagesPage() {
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t p-4 sticky bottom-0">
+      <div className="bg-white dark:bg-gray-800 border-t dark:border-gray-700 p-4 sticky bottom-0">
         <div className="flex gap-2">
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Escribe un mensaje..."
-            className="flex-1"
+            className="flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
           />
           <Button onClick={handleSend} disabled={!newMessage.trim()}>
             Enviar
