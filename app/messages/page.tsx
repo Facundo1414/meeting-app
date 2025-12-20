@@ -23,7 +23,22 @@ export default function MessagesPage() {
   const [replyTo, setReplyTo] = useState<{ id: string; message: string; sender: string } | null>(null);
   const [editingMessage, setEditingMessage] = useState<{ id: string; text: string } | null>(null);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [showHelpTooltip, setShowHelpTooltip] = useState(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [otherUserOnline, setOtherUserOnline] = useState(false);
+  const [otherUserLastSeen, setOtherUserLastSeen] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const presenceChannelRef = useRef<any>(null);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [touchStart, setTouchStart] = useState<{ x: number; time: number; messageId: string } | null>(null);
+  const [lastTap, setLastTap] = useState<{ messageId: string; time: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingChannelRef = useRef<any>(null);
@@ -63,10 +78,11 @@ export default function MessagesPage() {
     let channelPromise = initMessages();
 
     // Setup typing indicator channel
-    if (user) {
+    const currentUser = JSON.parse(userData);
+    if (currentUser) {
       typingChannelRef.current = supabase.channel('typing')
         .on('broadcast', { event: 'typing' }, (payload: any) => {
-          if (payload.payload.userId !== user.id) {
+          if (payload.payload.userId !== currentUser.id) {
             setIsOtherUserTyping(true);
             // Clear after 3 seconds
             if (typingTimeout) clearTimeout(typingTimeout);
@@ -75,21 +91,71 @@ export default function MessagesPage() {
           }
         })
         .subscribe();
+
+      // Setup presence channel for online status
+      const otherUserId = currentUser.id === '1' ? '2' : '1';
+      
+      // Load initial last seen
+      const initialLastSeen = localStorage.getItem(`lastSeen_${otherUserId}`);
+      if (initialLastSeen) {
+        setOtherUserLastSeen(initialLastSeen);
+      }
+      
+      presenceChannelRef.current = supabase.channel('presence')
+        .on('presence', { event: 'sync' }, () => {
+          const state = presenceChannelRef.current.presenceState();
+          const otherUserPresent = Object.values(state).some((presences: any) => 
+            presences.some((p: any) => p.userId === otherUserId)
+          );
+          setOtherUserOnline(otherUserPresent);
+          
+          if (!otherUserPresent) {
+            // Get last seen from localStorage of the other user
+            const lastSeen = localStorage.getItem(`lastSeen_${otherUserId}`);
+            if (lastSeen) {
+              setOtherUserLastSeen(lastSeen);
+            }
+          }
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await presenceChannelRef.current.track({
+              userId: currentUser.id,
+              online_at: new Date().toISOString(),
+            });
+          }
+        });
     }
 
     return () => {
+      // Update last seen before leaving
+      if (currentUser) {
+        localStorage.setItem(`lastSeen_${currentUser.id}`, new Date().toISOString());
+      }
+      
       channelPromise.then(channel => {
         if (channel) supabase.removeChannel(channel);
       });
       if (typingChannelRef.current) {
         supabase.removeChannel(typingChannelRef.current);
       }
+      if (presenceChannelRef.current) {
+        supabase.removeChannel(presenceChannelRef.current);
+      }
       if (typingTimeout) clearTimeout(typingTimeout);
+      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
     };
   }, [router]);
 
   useEffect(() => {
-    scrollToBottom();
+    // Solo hacer scroll automático en carga inicial o si el usuario está cerca del fondo
+    if (isInitialLoad) {
+      // Scroll instantáneo en la carga inicial
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      setIsInitialLoad(false);
+    } else if (isNearBottom) {
+      scrollToBottom();
+    }
     
     // Marcar mensajes del otro usuario como leídos
     if (user && messages.length > 0) {
@@ -99,19 +165,47 @@ export default function MessagesPage() {
       
       if (unreadMessages.length > 0) {
         import('@/lib/storage-supabase').then(({ markMessagesAsRead }) => {
-          markMessagesAsRead(unreadMessages, user.id);
+          markMessagesAsRead(unreadMessages, user.id).then(() => {
+            // Reload messages to show updated read status
+            loadMessages();
+          });
         });
       }
     }
   }, [messages, user]);
 
+  // Cerrar menús al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (showAttachmentMenu && !target.closest('.relative')) {
+        setShowAttachmentMenu(false);
+      }
+      if (showProfileMenu && !target.closest('.profile-menu-container')) {
+        setShowProfileMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showAttachmentMenu, showProfileMenu]);
+
   const loadMessages = async () => {
     const data = await getMessages();
-    setMessages(data);
+    // Limitar a los últimos 50 mensajes inicialmente
+    const recentMessages = data.slice(-50);
+    setMessages(recentMessages);
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+  };
+
+  // Detectar si el usuario está cerca del fondo del chat
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget;
+    const isAtBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+    setIsNearBottom(isAtBottom);
   };
 
   const handleSend = async () => {
@@ -137,7 +231,7 @@ export default function MessagesPage() {
     setNewMessage('');
     
     let mediaUrl: string | null = null;
-    let mediaType: 'image' | 'video' | undefined;
+    let mediaType: 'image' | 'video' | 'audio' | undefined;
 
     // Upload file if present
     if (selectedFile) {
@@ -172,6 +266,10 @@ export default function MessagesPage() {
     };
 
     setMessages(prev => [...prev, optimisticMessage]);
+    
+    // Forzar scroll cuando yo envío un mensaje
+    setIsNearBottom(true);
+    setTimeout(() => scrollToBottom(), 100);
 
     // Enviar al servidor en segundo plano
     const sent = await sendMessage(
@@ -196,9 +294,24 @@ export default function MessagesPage() {
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
+    // Enter sin Shift: enviar mensaje
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+    // Shift + Enter: nueva línea (comportamiento por defecto)
+    // Escape: cancelar edición o respuesta
+    if (e.key === 'Escape') {
+      if (editingMessage) {
+        setEditingMessage(null);
+        setNewMessage('');
+      }
+      if (replyTo) {
+        setReplyTo(null);
+      }
+      if (selectedFile) {
+        removeSelectedFile();
+      }
     }
   };
 
@@ -212,6 +325,11 @@ export default function MessagesPage() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    router.push('/');
+  };
+
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleString('es-AR', {
@@ -221,6 +339,49 @@ export default function MessagesPage() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  // Swipe right para responder
+  const handleTouchStart = (e: React.TouchEvent, msg: Message) => {
+    setTouchStart({
+      x: e.touches[0].clientX,
+      time: Date.now(),
+      messageId: msg.id
+    });
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent, msg: Message) => {
+    if (!touchStart || touchStart.messageId !== msg.id) return;
+
+    const touchEnd = e.changedTouches[0].clientX;
+    const distance = touchEnd - touchStart.x;
+    const timeDiff = Date.now() - touchStart.time;
+
+    // Swipe right (>50px en <300ms) = responder
+    if (distance > 50 && timeDiff < 300) {
+      setReplyTo({
+        id: msg.id,
+        message: msg.message,
+        sender: msg.senderUsername
+      });
+    }
+
+    setTouchStart(null);
+  };
+
+  // Doble tap para dar "me gusta" rápido
+  const handleDoubleTap = async (msg: Message) => {
+    const now = Date.now();
+    
+    if (lastTap && lastTap.messageId === msg.id && (now - lastTap.time) < 300) {
+      // Es un doble tap
+      const { toggleReaction } = await import('@/lib/storage-supabase');
+      await toggleReaction(msg.id, user?.id || '', '❤️');
+      setLastTap(null);
+    } else {
+      // Primer tap
+      setLastTap({ messageId: msg.id, time: now });
+    }
   };
 
   const toggleDarkMode = () => {
@@ -356,27 +517,204 @@ export default function MessagesPage() {
     setReplyTo(null);
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Detect supported mime types
+      const mimeTypes = [
+        'audio/webm',
+        'audio/webm;codecs=opus',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ];
+      
+      const supportedMimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+      
+      if (!supportedMimeType) {
+        alert('Tu navegador no soporta grabación de audio');
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: supportedMimeType });
+      mediaRecorderRef.current = mediaRecorder;
+
+      const chunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: supportedMimeType });
+        setAudioBlob(blob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      // Start timer
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+      alert('No se pudo acceder al micrófono');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+    }
+  };
+
+  const cancelRecording = () => {
+    stopRecording();
+    setAudioBlob(null);
+    setRecordingTime(0);
+  };
+
+  const sendAudioMessage = async () => {
+    if (!user || !audioBlob) return;
+
+    setUploading(true);
+
+    try {
+      // Get file extension from blob type
+      const mimeType = audioBlob.type || 'audio/webm';
+      const extension = mimeType.split('/')[1].split(';')[0]; // e.g., 'webm', 'ogg', 'mp4'
+      
+      console.log('Uploading audio:', { mimeType, extension, size: audioBlob.size });
+      
+      // Upload audio to storage
+      const audioFile = new File([audioBlob], `audio-${Date.now()}.${extension}`, { type: mimeType });
+      const { uploadMedia } = await import('@/lib/storage-supabase');
+      const mediaUrl = await uploadMedia(audioFile, user.id);
+
+      setUploading(false);
+
+      if (!mediaUrl) {
+        alert('Error al subir el audio. Por favor, intenta de nuevo.');
+        return;
+      }
+
+      // Send message with audio
+      const optimisticMessage: Message = {
+        id: `temp-${Date.now()}`,
+        senderId: user.id,
+        senderUsername: user.username,
+        message: '',
+        timestamp: new Date().toISOString(),
+        readBy: [user.id],
+        mediaUrl,
+        mediaType: 'audio',
+        replyToId: replyTo?.id,
+        replyToMessage: replyTo?.message,
+        replyToSender: replyTo?.sender,
+      };
+
+      setMessages(prev => [...prev, optimisticMessage]);
+      
+      // Forzar scroll cuando envío audio
+      setIsNearBottom(true);
+      setTimeout(() => scrollToBottom(), 100);
+
+      const sent = await sendMessage(
+        user.id,
+        user.username,
+        '',
+        mediaUrl,
+        'audio',
+        replyTo?.id,
+        replyTo?.message,
+        replyTo?.sender
+      );
+
+      setReplyTo(null);
+      setAudioBlob(null);
+      setRecordingTime(0);
+
+      if (!sent) {
+        setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+        alert('Error al enviar el mensaje de audio');
+      }
+    } catch (error) {
+      console.error('Error sending audio message:', error);
+      setUploading(false);
+      alert('Error al procesar el audio. Por favor, intenta de nuevo.');
+    }
+  };
+
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatLastSeen = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / 60000);
+    
+    if (diffMinutes < 1) return 'Hace un momento';
+    if (diffMinutes < 60) return `Hace ${diffMinutes} min`;
+    
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `Hace ${diffHours}h`;
+    
+    return date.toLocaleDateString('es-AR', { 
+      day: 'numeric', 
+      month: 'short'
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-3 sticky top-0 z-10">
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push('/calendar')}
-            className="dark:border-gray-600 dark:text-gray-200 px-2 h-8"
-          >
-            ←
-          </Button>
-          <h1 className="text-lg font-bold dark:text-gray-100 absolute left-1/2 -translate-x-1/2">Mensajes</h1>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={toggleDarkMode} title="Cambiar tema" className="px-2 h-8">
-              {darkMode ? '☀️' : '🌙'}
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between mb-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push('/calendar')}
+              className="dark:border-gray-600 dark:text-gray-200 px-2 h-8"
+            >
+              ←
             </Button>
-            <div className="text-xs text-gray-600 dark:text-gray-400">
-              {user?.username}
+            <h1 className="text-lg font-bold dark:text-gray-100">Mensajes</h1>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleDarkMode}
+                className="px-2 py-1.5 text-sm rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="Cambiar tema"
+              >
+                {darkMode ? '☀️' : '🌙'}
+              </button>
             </div>
+          </div>
+          {/* Online status row */}
+          <div className="text-center mt-1">
+            {otherUserOnline && (
+              <div className="text-xs text-green-500 dark:text-green-400 flex items-center justify-center gap-1">
+                <span className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-pulse"></span>
+                En línea
+              </div>
+            )}
+            {!otherUserOnline && otherUserLastSeen && (
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {formatLastSeen(otherUserLastSeen)}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -394,15 +732,21 @@ export default function MessagesPage() {
                   ? 'bg-blue-500 text-white'
                   : 'bg-white dark:bg-gray-700 border dark:border-gray-600 dark:text-gray-100'
               }`}
-              onTouchStart={() => !msg.id.startsWith('temp-') && handleLongPressStart(msg.id)}
-              onTouchEnd={handleLongPressEnd}
+              onTouchStart={(e) => {
+                if (!msg.id.startsWith('temp-')) {
+                  handleLongPressStart(msg.id);
+                  handleTouchStart(e, msg);
+                }
+              }}
+              onTouchEnd={(e) => {
+                handleLongPressEnd();
+                handleTouchEnd(e, msg);
+              }}
               onMouseDown={() => !msg.id.startsWith('temp-') && handleLongPressStart(msg.id)}
               onMouseUp={handleLongPressEnd}
               onMouseLeave={handleLongPressEnd}
+              onClick={() => !msg.id.startsWith('temp-') && handleDoubleTap(msg)}
             >
-                <div className="text-xs opacity-70 mb-1">
-                  {msg.senderUsername}
-                </div>
               {/* Reply reference */}
               {msg.replyToId && (
                 <div className="bg-black/10 dark:bg-white/10 border-l-2 border-white/50 pl-2 py-1 mb-2 rounded text-xs opacity-80">
@@ -419,13 +763,19 @@ export default function MessagesPage() {
                       className="max-w-full rounded-lg max-h-80 object-cover"
                       loading="lazy"
                     />
-                  ) : (
+                  ) : msg.mediaType === 'video' ? (
                     <video 
                       src={msg.mediaUrl} 
                       controls 
                       className="max-w-full rounded-lg max-h-80"
                     />
-                  )}
+                  ) : msg.mediaType === 'audio' ? (
+                    <audio 
+                      src={msg.mediaUrl} 
+                      controls 
+                      className="w-full max-w-xs"
+                    />
+                  ) : null}
                 </div>
               )}
               {msg.message && <div className="break-words">{msg.message}</div>}
@@ -526,21 +876,22 @@ export default function MessagesPage() {
               </div>
             </div>
           </div>
-        )}    </div>
+        )}
+      </div>
 
-    {/* Overlay para cerrar menú */}
-    {(showMenu || showReactions) && (
-      <div 
-        className="fixed inset-0 z-40" 
-        onClick={() => {
-          setShowMenu(null);
-          setShowReactions(null);
-        }}
-      />
-    )}
+      {/* Overlay para cerrar menú */}
+      {(showMenu || showReactions) && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => {
+            setShowMenu(null);
+            setShowReactions(null);
+          }}
+        />
+      )}
 
-      {/* Input */}
-      <div className="bg-white dark:bg-gray-800 border-t dark:border-gray-700 p-4 sticky bottom-0">
+      {/* Input area */}
+      <div className="bg-white dark:bg-gray-800 border-t dark:border-gray-700 p-3">
         {/* Reply preview */}
         {replyTo && (
           <div className="mb-2 bg-gray-100 dark:bg-gray-700 border-l-4 border-blue-500 p-2 rounded flex justify-between items-center">
@@ -572,6 +923,57 @@ export default function MessagesPage() {
           </div>
         )}
 
+        {/* Recording UI */}
+        {isRecording && (
+          <div className="mb-3 bg-red-50 dark:bg-red-950 border-2 border-red-500 dark:border-red-600 rounded-lg p-3 flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-1">
+              <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full animate-pulse"></div>
+              <span className="text-red-700 dark:text-red-300 font-semibold">Grabando audio</span>
+              <span className="text-red-600 dark:text-red-200 font-mono">{formatRecordingTime(recordingTime)}</span>
+            </div>
+            <button
+              onClick={cancelRecording}
+              className="text-red-600 hover:text-red-800 dark:text-red-300 dark:hover:text-red-100 font-bold text-lg"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Audio preview */}
+        {audioBlob && !isRecording && (
+          <div className="mb-3 bg-blue-50 dark:bg-blue-950 border-2 border-blue-500 dark:border-blue-600 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-blue-700 dark:text-blue-300 font-semibold">🎤 Audio grabado ({formatRecordingTime(recordingTime)})</span>
+              <button
+                onClick={cancelRecording}
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-100 font-bold text-lg"
+              >
+                ✕
+              </button>
+            </div>
+            <audio src={URL.createObjectURL(audioBlob)} controls className="w-full mb-2" />
+            <div className="flex gap-2">
+              <Button 
+                size="sm" 
+                onClick={sendAudioMessage}
+                disabled={uploading}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {uploading ? '📤' : '✅ Enviar'}
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={cancelRecording}
+                className="dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-950"
+              >
+                🗑️ Descartar
+              </Button>
+            </div>
+          </div>
+        )}
+
         {previewUrl && (
           <div className="mb-3 relative inline-block">
             {selectedFile?.type.startsWith('image/') ? (
@@ -587,7 +989,7 @@ export default function MessagesPage() {
             </button>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-end relative">
           <input
             ref={fileInputRef}
             type="file"
@@ -596,36 +998,78 @@ export default function MessagesPage() {
             onChange={handleFileSelect}
             className="hidden"
           />
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleCameraCapture}
-            disabled={uploading}
-            className="dark:border-gray-600 dark:text-gray-200"
-            title="Tomar foto o video"
-          >
-            📷
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => {
-              if (fileInputRef.current) {
-                fileInputRef.current.removeAttribute('capture');
-                fileInputRef.current.click();
-                setTimeout(() => {
-                  if (fileInputRef.current) {
-                    fileInputRef.current.setAttribute('capture', 'environment');
-                  }
-                }, 100);
-              }
-            }}
-            disabled={uploading}
-            className="dark:border-gray-600 dark:text-gray-200"
-            title="Adjuntar desde galería"
-          >
-            📎
-          </Button>
+          
+          {/* Botón principal de adjuntos con menú desplegable */}
+          <div className="relative">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+              disabled={uploading || isRecording || !!audioBlob}
+              className="dark:border-gray-600 dark:text-gray-200"
+              title="Adjuntar"
+            >
+              ➕
+            </Button>
+
+            {/* Menú desplegable de opciones */}
+            {showAttachmentMenu && !isRecording && !audioBlob && (
+              <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-[180px] z-50">
+                <button
+                  onClick={() => {
+                    startRecording();
+                    setShowAttachmentMenu(false);
+                  }}
+                  disabled={uploading || !!selectedFile}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-200"
+                >
+                  🎤 <span>Mensaje de voz</span>
+                </button>
+                <button
+                  onClick={() => {
+                    handleCameraCapture();
+                    setShowAttachmentMenu(false);
+                  }}
+                  disabled={uploading}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-200"
+                >
+                  📷 <span>Cámara</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (fileInputRef.current) {
+                      fileInputRef.current.removeAttribute('capture');
+                      fileInputRef.current.click();
+                      setTimeout(() => {
+                        if (fileInputRef.current) {
+                          fileInputRef.current.setAttribute('capture', 'environment');
+                        }
+                      }, 100);
+                    }
+                    setShowAttachmentMenu(false);
+                  }}
+                  disabled={uploading}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-200"
+                >
+                  📎 <span>Galería</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Stop recording button cuando está grabando */}
+          {isRecording && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={stopRecording}
+              className="dark:border-gray-600 dark:text-gray-200 bg-red-100 dark:bg-red-900/30"
+              title="Detener grabación"
+            >
+              ⏹️
+            </Button>
+          )}
+
           <Input
             value={newMessage}
             onChange={(e) => {
@@ -641,10 +1085,14 @@ export default function MessagesPage() {
                   : "Escribe un mensaje..."
             }
             className="flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
-            disabled={uploading}
+            disabled={uploading || isRecording || !!audioBlob}
           />
-          <Button onClick={handleSend} disabled={(!newMessage.trim() && !selectedFile) || uploading}>
-            {uploading ? '📤' : editingMessage ? '💾' : 'Enviar'}
+          <Button 
+            onClick={handleSend} 
+            disabled={(!newMessage.trim() && !selectedFile) || uploading || isRecording || !!audioBlob}
+            title={editingMessage ? 'Guardar' : 'Enviar'}
+          >
+            {uploading ? '⏳' : editingMessage ? '💾' : '✈️'}
           </Button>
         </div>
       </div>

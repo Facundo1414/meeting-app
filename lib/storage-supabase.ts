@@ -163,7 +163,7 @@ export interface Message {
   timestamp: string;
   readBy?: string[];
   mediaUrl?: string;
-  mediaType?: "image" | "video";
+  mediaType?: "image" | "video" | "audio";
   reactions?: Array<{ userId: string; emoji: string }>;
   replyToId?: string;
   replyToMessage?: string;
@@ -211,7 +211,7 @@ export async function sendMessage(
   senderUsername: string,
   message: string,
   mediaUrl?: string,
-  mediaType?: "image" | "video",
+  mediaType?: "image" | "video" | "audio",
   replyToId?: string,
   replyToMessage?: string,
   replyToSender?: string
@@ -382,32 +382,60 @@ export async function uploadMedia(
   userId: string
 ): Promise<string | null> {
   try {
-    // Compress if it's an image
+    console.log("Starting upload:", {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      userId,
+    });
+
+    // Compress only if it's an image
     let fileToUpload = file;
     if (file.type.startsWith("image/")) {
       fileToUpload = await compressImage(file);
+      console.log("Image compressed:", {
+        originalSize: file.size,
+        compressedSize: fileToUpload.size,
+      });
     }
 
-    const fileExt = file.name.split(".").pop();
+    // Get proper file extension from file name or mime type
+    let fileExt = file.name.split(".").pop();
+
+    // Fallback: extract extension from mime type if not in filename
+    if (!fileExt || fileExt === file.name) {
+      const mimeType = file.type;
+      if (mimeType.includes("/")) {
+        fileExt = mimeType.split("/")[1].split(";")[0];
+      } else {
+        fileExt = "bin"; // generic binary fallback
+      }
+    }
+
     const fileName = `${userId}/${Date.now()}.${fileExt}`;
+    console.log("Uploading to:", fileName);
 
     const { data, error } = await supabase.storage
       .from("meeting-app-media")
       .upload(fileName, fileToUpload, {
         cacheControl: "3600",
         upsert: false,
+        contentType: file.type, // Explicitly set content type
       });
 
     if (error) {
-      console.error("Error uploading file:", error);
+      console.error("Supabase storage error:", error);
       return null;
     }
+
+    console.log("Upload successful:", data);
 
     // Get public URL
     const { data: urlData } = supabase.storage
       .from("meeting-app-media")
       .getPublicUrl(fileName);
 
+    console.log("Public URL generated:", urlData.publicUrl);
     return urlData.publicUrl;
   } catch (error) {
     console.error("Error in uploadMedia:", error);

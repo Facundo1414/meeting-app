@@ -2,12 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { User } from '@/lib/auth-supabase';
 import { TimeSlot, getTimeSlots, addTimeSlot, deleteTimeSlot } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { EmptyState } from '@/components/empty-state';
+import { CalendarDaySkeleton } from '@/components/calendar-skeleton';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
+import { PullToRefreshIndicator } from '@/components/pull-to-refresh';
+import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
+import { SyncIndicator } from '@/components/sync-indicator';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
 
@@ -23,7 +32,26 @@ export default function CalendarPage() {
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+
+  // Swipe navigation
+  useSwipeNavigation({
+    onSwipeLeft: () => changeDate(1),
+    onSwipeRight: () => {
+      if (!isBeforeToday()) changeDate(-1);
+    },
+  });
+
+  // Pull to refresh
+  const { containerRef, pullDistance, isRefreshing } = usePullToRefresh({
+    onRefresh: async () => {
+      await loadSlots();
+      toast.success('Actualizado');
+    },
+  });
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -100,9 +128,28 @@ export default function CalendarPage() {
     };
   }, [user]);
 
+  // Cerrar menú de perfil al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (showProfileMenu && !target.closest('.profile-menu-container')) {
+        setShowProfileMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showProfileMenu]);
+
   const loadSlots = async () => {
-    const data = await getTimeSlots();
-    setSlots(data);
+    try {
+      setIsSyncing(true);
+      const data = await getTimeSlots();
+      setSlots(data);
+    } finally {
+      setIsSyncing(false);
+      setIsLoading(false);
+    }
   };
 
   const handleLogout = () => {
@@ -175,7 +222,7 @@ export default function CalendarPage() {
     const end = parseInt(endHour);
 
     if (start >= end) {
-      alert('La hora de fin debe ser mayor a la hora de inicio');
+      toast.error('La hora de fin debe ser mayor a la hora de inicio');
       return;
     }
 
@@ -191,6 +238,7 @@ export default function CalendarPage() {
         eventType: eventType,
         note: note || undefined,
       });
+      toast.success('Evento actualizado');
     } else {
       // Crear nuevo slot
       await addTimeSlot({
@@ -202,6 +250,7 @@ export default function CalendarPage() {
         eventType: eventType,
         note: note || undefined,
       });
+      toast.success('Evento creado');
     }
 
     setStartHour('9');
@@ -215,6 +264,7 @@ export default function CalendarPage() {
 
   const removeSlot = async (id: string) => {
     await deleteTimeSlot(id);
+    toast.success('Evento eliminado');
     await loadSlots();
   };
 
@@ -238,14 +288,41 @@ export default function CalendarPage() {
 
   if (!user) return null;
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 p-4">
+        <CalendarDaySkeleton />
+      </div>
+    );
+  }
+
   const otherUserId = user.id === '1' ? '2' : '1';
   const mySlots = getUserSlots(user.id);
   const otherSlots = getUserSlots(otherUserId);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20">
+    <div ref={containerRef} className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 overflow-auto">
+      <SyncIndicator isSyncing={isSyncing} />
+      <PullToRefreshIndicator pullDistance={pullDistance} isRefreshing={isRefreshing} />
+      
       <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
         <div className="flex items-center justify-between p-2 gap-2">
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+            <button
+              onClick={() => router.push('/week')}
+              className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
+              title="Vista mensual"
+            >
+              📅
+            </button>
+            <button
+              onClick={toggleDarkMode}
+              className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
+              title="Cambiar tema"
+            >
+              {darkMode ? '☀️' : '🌙'}
+            </button>
+          </div>
           <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
             Calendar
           </h1>
@@ -263,18 +340,70 @@ export default function CalendarPage() {
               className="relative bg-blue-500 text-white hover:bg-blue-600 border-blue-600 px-2 text-xs h-8"
             >
               💬
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold text-[10px]">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
+              <AnimatePresence>
+                {unreadCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold text-[10px] animate-bounce"
+                  >
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </Button>
+            
+            {/* Menú hamburguesa de perfil */}
+            <div className="relative profile-menu-container">
+              <button
+                onClick={() => setShowProfileMenu(!showProfileMenu)}
+                className="px-2 py-1 text-sm rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 h-8"
+                title="Perfil y configuración"
+              >
+                ☰
+              </button>
+              
+              {showProfileMenu && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl z-50 overflow-hidden">
+                  {/* Perfil */}
+                  <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-500">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-700 flex items-center justify-center text-2xl">
+                        {user?.username.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-bold text-white">{user?.username}</div>
+                        <div className="text-xs text-white/80">Usuario #{user?.id}</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Última conexión */}
+                  <div className="px-4 py-3 border-b dark:border-gray-700">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Última conexión</div>
+                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                      {new Date().toLocaleString('es-AR', { 
+                        timeZone: 'America/Argentina/Cordoba',
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                  
+                  {/* Botón salir */}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
+                  >
+                    <span>🚪</span>
+                    <span className="font-medium">Cerrar sesión</span>
+                  </button>
+                </div>
               )}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={toggleDarkMode} title="Cambiar tema" className="px-2 h-8">
-              {darkMode ? '☀️' : '🌙'}
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="px-2 text-xs h-8">
-              Salir
-            </Button>
+            </div>
           </div>
         </div>
         <div className="flex items-center justify-between px-4 py-2 border-t dark:border-gray-700">
@@ -295,15 +424,6 @@ export default function CalendarPage() {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Vista Mensual Button */}
-        <Button 
-          onClick={() => router.push('/week')} 
-          variant="outline" 
-          className="w-full shadow-md border-2 border-purple-200 hover:bg-purple-50 dark:border-purple-700 dark:hover:bg-purple-900/20 dark:text-gray-200"
-        >
-          📅 Ver calendario mensual
-        </Button>
-
         {/* Tu disponibilidad */}
         <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="pb-3">
@@ -459,13 +579,21 @@ export default function CalendarPage() {
             )}
 
             {mySlots.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                <p className="text-sm">No tienes eventos para este día</p>
-                <p className="text-xs mt-1">Toca "+ Agregar" para crear uno</p>
-              </div>
+              <EmptyState type="calendar" />
             ) : (
-              <div className="space-y-2">
-                {mySlots.map((slot) => {
+              <motion.div 
+                className="space-y-2"
+                initial="hidden"
+                animate="visible"
+                variants={{
+                  visible: {
+                    transition: {
+                      staggerChildren: 0.05
+                    }
+                  }
+                }}
+              >
+                {mySlots.map((slot, index) => {
                   const type = slot.eventType || 'unavailable';
                   
                   // Definir clases completas para cada tipo
@@ -502,8 +630,12 @@ export default function CalendarPage() {
                   }
                   
                   return (
-                  <div
+                  <motion.div
                     key={slot.id}
+                    variants={{
+                      hidden: { opacity: 0, y: 20 },
+                      visible: { opacity: 1, y: 0 }
+                    }}
                     className={`p-3 ${bgClass} border-2 ${borderClass} rounded-lg`}
                   >
                     <div className="flex items-start justify-between">
@@ -535,10 +667,10 @@ export default function CalendarPage() {
                         </Button>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 );
                 })}
-              </div>
+              </motion.div>
             )}
           </CardContent>
         </Card>

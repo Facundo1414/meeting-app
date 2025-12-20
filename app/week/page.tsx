@@ -16,6 +16,7 @@ export default function MonthViewPage() {
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -48,6 +49,19 @@ export default function MonthViewPage() {
       supabase.removeChannel(channel);
     };
   }, [router]);
+
+  // Cerrar menú de perfil al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (showProfileMenu && !target.closest('.profile-menu-container')) {
+        setShowProfileMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showProfileMenu]);
 
   const loadSlots = async () => {
     const data = await getTimeSlots();
@@ -150,19 +164,75 @@ export default function MonthViewPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-6">
       <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
         <div className="flex items-center justify-between p-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/calendar')} className="dark:text-gray-200">
-            ← Día
-          </Button>
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+            <button
+              onClick={() => router.push('/calendar')}
+              className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600 dark:text-gray-200"
+              title="Vista día"
+            >
+              📅
+            </button>
+            <button
+              onClick={toggleDarkMode}
+              className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
+              title="Cambiar tema"
+            >
+              {darkMode ? '☀️' : '🌙'}
+            </button>
+          </div>
           <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             {currentMonth.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }).toUpperCase()}
           </h1>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={toggleDarkMode} title="Cambiar tema">
-              {darkMode ? '☀️' : '🌙'}
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleLogout} className="dark:border-gray-600 dark:text-gray-200">
-              Salir
-            </Button>
+          
+          {/* Menú hamburguesa de perfil */}
+          <div className="relative profile-menu-container">
+            <button
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-200"
+              title="Perfil y configuración"
+            >
+              ☰
+            </button>
+            
+            {showProfileMenu && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl z-50 overflow-hidden">
+                {/* Perfil */}
+                <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-500">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-700 flex items-center justify-center text-2xl">
+                      {user?.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-bold text-white">{user?.username}</div>
+                      <div className="text-xs text-white/80">Usuario #{user?.id}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Última conexión */}
+                <div className="px-4 py-3 border-b dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Última conexión</div>
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                    {new Date().toLocaleString('es-AR', { 
+                      timeZone: 'America/Argentina/Cordoba',
+                      day: '2-digit',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </div>
+                </div>
+                
+                {/* Botón salir */}
+                <button
+                  onClick={handleLogout}
+                  className="w-full px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
+                >
+                  <span>🚪</span>
+                  <span className="font-medium">Cerrar sesión</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center justify-between px-4 pb-3 border-t dark:border-gray-700 pt-3">
