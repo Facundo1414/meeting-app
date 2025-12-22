@@ -201,6 +201,126 @@ export async function getMessages(): Promise<Message[]> {
   }
 }
 
+// Get messages with pagination (for loading older messages)
+export async function getMessagesPaginated(
+  limit: number = 50,
+  beforeTimestamp?: string
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  try {
+    let query = supabase
+      .from("messages_meeting_app")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit + 1); // Fetch one extra to check if there are more
+
+    if (beforeTimestamp) {
+      query = query.lt("created_at", beforeTimestamp);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Error fetching paginated messages:", error);
+      return { messages: [], hasMore: false };
+    }
+
+    const hasMore = (data || []).length > limit;
+    const messages = (data || [])
+      .slice(0, limit)
+      .map((msg) => ({
+        id: msg.id,
+        senderId: msg.sender_id,
+        senderUsername: msg.sender_username,
+        message: msg.message,
+        timestamp: msg.created_at,
+        readBy: msg.read_by || [],
+        mediaUrl: msg.media_url,
+        mediaType: msg.media_type,
+        reactions: msg.reactions || [],
+        replyToId: msg.reply_to_id,
+        editedAt: msg.edited_at,
+      }))
+      .reverse(); // Reverse to get chronological order
+
+    return { messages, hasMore };
+  } catch (error) {
+    console.error("Error in getMessagesPaginated:", error);
+    return { messages: [], hasMore: false };
+  }
+}
+
+// Get new messages after a specific timestamp (for real-time updates without losing history)
+export async function getNewMessages(
+  afterTimestamp: string
+): Promise<Message[]> {
+  try {
+    const { data, error } = await supabase
+      .from("messages_meeting_app")
+      .select("*")
+      .gt("created_at", afterTimestamp)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching new messages:", error);
+      return [];
+    }
+
+    return (data || []).map((msg) => ({
+      id: msg.id,
+      senderId: msg.sender_id,
+      senderUsername: msg.sender_username,
+      message: msg.message,
+      timestamp: msg.created_at,
+      readBy: msg.read_by || [],
+      mediaUrl: msg.media_url,
+      mediaType: msg.media_type,
+      reactions: msg.reactions || [],
+      replyToId: msg.reply_to_id,
+      editedAt: msg.edited_at,
+    }));
+  } catch (error) {
+    console.error("Error in getNewMessages:", error);
+    return [];
+  }
+}
+
+// Get a single message by ID (for updates)
+export async function getMessageById(
+  messageId: string
+): Promise<Message | null> {
+  try {
+    const { data, error } = await supabase
+      .from("messages_meeting_app")
+      .select("*")
+      .eq("id", messageId)
+      .single();
+
+    if (error) {
+      console.error("Error fetching message:", error);
+      return null;
+    }
+
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      senderId: data.sender_id,
+      senderUsername: data.sender_username,
+      message: data.message,
+      timestamp: data.created_at,
+      readBy: data.read_by || [],
+      mediaUrl: data.media_url,
+      mediaType: data.media_type,
+      reactions: data.reactions || [],
+      replyToId: data.reply_to_id,
+      editedAt: data.edited_at,
+    };
+  } catch (error) {
+    console.error("Error in getMessageById:", error);
+    return null;
+  }
+}
+
 // Send a message
 export async function sendMessage(
   senderId: string,
@@ -542,18 +662,37 @@ export async function toggleReaction(
   }
 }
 // Update user's last seen timestamp
-export async function updateLastSeen(userId: string): Promise<boolean> {
+export async function updateLastSeen(
+  userId: string,
+  username?: string
+): Promise<boolean> {
   try {
-    const { error } = await supabase
+    // Primero intentar actualizar
+    const { data, error: updateError } = await supabase
       .from("users_meeting_app")
-      .update({
-        last_seen: new Date().toISOString(),
-      })
-      .eq("id", userId);
+      .update({ last_seen: new Date().toISOString() })
+      .eq("id", userId)
+      .select();
 
-    if (error) {
-      console.error("Error updating last seen:", error);
+    if (updateError) {
+      console.error("Error updating last seen:", updateError);
       return false;
+    }
+
+    // Si no se actualizó ningún registro y tenemos username, crear el registro
+    if ((!data || data.length === 0) && username) {
+      const { error: insertError } = await supabase
+        .from("users_meeting_app")
+        .insert({
+          id: userId,
+          username: username,
+          last_seen: new Date().toISOString(),
+        });
+
+      if (insertError) {
+        console.error("Error inserting user for last seen:", insertError);
+        return false;
+      }
     }
 
     return true;

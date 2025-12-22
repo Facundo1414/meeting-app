@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { User } from '@/lib/auth-supabase';
-import { TimeSlot, getTimeSlots } from '@/lib/storage-supabase';
+import { TimeSlot, getTimeSlots, getLastSeen, updateLastSeen } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
 import { CalendarMonthSkeleton } from '@/components/calendar-skeleton';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
@@ -22,6 +22,7 @@ export function MonthView() {
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [otherUserLastSeen, setOtherUserLastSeen] = useState<string | null>(null);
   const router = useRouter();
 
   // Swipe navigation
@@ -36,7 +37,11 @@ export function MonthView() {
       router.push('/');
       return;
     }
-    setUser(JSON.parse(userData));
+    const parsedUser = JSON.parse(userData);
+    setUser(parsedUser);
+    
+    // Actualizar last_seen al entrar a la app
+    updateLastSeen(parsedUser.id, parsedUser.username);
     
     // Cargar dark mode
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
@@ -76,6 +81,18 @@ export function MonthView() {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showProfileMenu]);
+
+  // Cargar última conexión del otro usuario cuando se abre el menú
+  useEffect(() => {
+    if (showProfileMenu && user) {
+      const otherUserId = user.id === '1' ? '2' : '1';
+      getLastSeen(otherUserId).then(lastSeen => {
+        if (lastSeen) {
+          setOtherUserLastSeen(lastSeen);
+        }
+      });
+    }
+  }, [showProfileMenu, user]);
 
   const loadSlots = useCallback(async () => {
     // Cargar caché primero para render inmediato
@@ -259,17 +276,19 @@ export function MonthView() {
                   </div>
                 </div>
                 
-                {/* Última conexión */}
+                {/* Última conexión del otro usuario */}
                 <div className="px-4 py-3 border-b dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Última conexión</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Última conexión de {user?.id === '1' ? 'Usuario #2' : 'Usuario #1'}
+                  </div>
                   <div className="text-sm text-gray-700 dark:text-gray-300">
-                    {new Date().toLocaleString('es-AR', { 
+                    {otherUserLastSeen ? new Date(otherUserLastSeen).toLocaleString('es-AR', { 
                       timeZone: 'America/Argentina/Cordoba',
                       day: '2-digit',
                       month: 'short',
                       hour: '2-digit',
                       minute: '2-digit'
-                    })}
+                    }) : 'Sin conexiones recientes'}
                   </div>
                 </div>
                 

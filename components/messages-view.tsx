@@ -1,17 +1,29 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { User } from '@/lib/auth-supabase';
-import { Message, getMessages, sendMessage, updateLastSeen, getLastSeen } from '@/lib/storage-supabase';
+import { 
+  Message, 
+  getMessages, 
+  getMessagesPaginated,
+  getNewMessages,
+  getMessageById,
+  sendMessage, 
+  updateLastSeen, 
+  getLastSeen,
+  editMessage,
+  markMessagesAsRead,
+  deleteMessage,
+  toggleReaction,
+  uploadMedia
+} from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { PageTransition } from '@/components/page-transition';
 import { AudioPlayer as SmartAudioPlayer } from '@/components/audio-player';
+import { getOptimizedImageUrl } from '@/lib/image-utils';
 
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -46,7 +58,11 @@ export function MessagesView() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [touchStart, setTouchStart] = useState<{ x: number; time: number; messageId: string } | null>(null);
   const [lastTap, setLastTap] = useState<{ messageId: string; time: number } | null>(null);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const isLoadingOlderRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingChannelRef = useRef<any>(null);
   const lastTypingBroadcast = useRef<number>(0);
@@ -73,9 +89,100 @@ export function MessagesView() {
         .channel('messages_changes')
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'messages_meeting_app' },
-          () => {
-            loadMessages();
+          { event: 'INSERT', schema: 'public', table: 'messages_meeting_app' },
+          async (payload) => {
+            // Agregar nuevo mensaje sin perder historial
+            const newMsg = payload.new as any;
+            const formattedMsg: Message = {
+              id: newMsg.id,
+              senderId: newMsg.sender_id,
+              senderUsername: newMsg.sender_username,
+              message: newMsg.message,
+              timestamp: newMsg.created_at,
+              readBy: newMsg.read_by || [],
+              mediaUrl: newMsg.media_url,
+              mediaType: newMsg.media_type,
+              reactions: newMsg.reactions || [],
+              replyToId: newMsg.reply_to_id,
+              editedAt: newMsg.edited_at,
+            };
+            
+            setMessages(prev => {
+              // Evitar duplicados - verificar si ya existe el mensaje real
+              if (prev.some(m => m.id === formattedMsg.id)) {
+                return prev;
+              }
+              
+              // Buscar mensaje optimista del mismo usuario con contenido similar
+              // Comparar mensaje, sender, mediaUrl y replyToId para mayor precisión
+              const optimisticIndex = prev.findIndex(m => 
+                m.id.startsWith('temp-') && 
+                m.senderId === formattedMsg.senderId && 
+                m.message === formattedMsg.message &&
+                m.mediaUrl === formattedMsg.mediaUrl &&
+                m.replyToId === formattedMsg.replyToId
+              );
+              
+              if (optimisticIndex !== -1) {
+                // Reemplazar mensaje optimista con el real
+                const newMessages = [...prev];
+                newMessages[optimisticIndex] = formattedMsg;
+                return newMessages;
+              }
+              
+              // Si no hay mensaje optimista pero el timestamp es muy reciente (< 5 segundos),
+              // buscar uno del mismo usuario que podría coincidir
+              const now = new Date();
+              const msgTime = new Date(formattedMsg.timestamp);
+              const timeDiff = now.getTime() - msgTime.getTime();
+              
+              if (timeDiff < 5000) {
+                const recentOptimistic = prev.findIndex(m => 
+                  m.id.startsWith('temp-') && 
+                  m.senderId === formattedMsg.senderId
+                );
+                
+                if (recentOptimistic !== -1) {
+                  const newMessages = [...prev];
+                  newMessages[recentOptimistic] = formattedMsg;
+                  return newMessages;
+                }
+              }
+              
+              return [...prev, formattedMsg];
+            });
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'messages_meeting_app' },
+          async (payload) => {
+            // Actualizar mensaje existente
+            const updatedMsg = payload.new as any;
+            const formattedMsg: Message = {
+              id: updatedMsg.id,
+              senderId: updatedMsg.sender_id,
+              senderUsername: updatedMsg.sender_username,
+              message: updatedMsg.message,
+              timestamp: updatedMsg.created_at,
+              readBy: updatedMsg.read_by || [],
+              mediaUrl: updatedMsg.media_url,
+              mediaType: updatedMsg.media_type,
+              reactions: updatedMsg.reactions || [],
+              replyToId: updatedMsg.reply_to_id,
+              editedAt: updatedMsg.edited_at,
+            };
+            
+            setMessages(prev => prev.map(m => m.id === formattedMsg.id ? formattedMsg : m));
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'messages_meeting_app' },
+          (payload) => {
+            // Eliminar mensaje
+            const deletedId = (payload.old as any).id;
+            setMessages(prev => prev.filter(m => m.id !== deletedId));
           }
         )
         .subscribe();
@@ -88,6 +195,9 @@ export function MessagesView() {
     // Setup typing indicator channel
     const currentUser = JSON.parse(userData);
     if (currentUser) {
+      // Actualizar last_seen inmediatamente al entrar
+      updateLastSeen(currentUser.id, currentUser.username);
+      
       typingChannelRef.current = supabase.channel('typing')
         .on('broadcast', { event: 'typing' }, (payload: any) => {
           if (payload.payload.userId !== currentUser.id) {
@@ -139,7 +249,7 @@ export function MessagesView() {
     return () => {
       // Update last seen in Supabase before leaving
       if (currentUser) {
-        updateLastSeen(currentUser.id);
+        updateLastSeen(currentUser.id, currentUser.username);
       }
       
       channelPromise.then(channel => {
@@ -162,17 +272,17 @@ export function MessagesView() {
 
     // Update lastSeen every 30 seconds while on the page
     const interval = setInterval(() => {
-      updateLastSeen(user.id);
+      updateLastSeen(user.id, user.username);
     }, 30000);
 
     // Update lastSeen when user leaves the page
     const handleBeforeUnload = () => {
-      updateLastSeen(user.id);
+      updateLastSeen(user.id, user.username);
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        updateLastSeen(user.id);
+        updateLastSeen(user.id, user.username);
       }
     };
 
@@ -187,6 +297,11 @@ export function MessagesView() {
   }, [user]);
 
   useEffect(() => {
+    // No hacer scroll si estamos cargando mensajes antiguos
+    if (isLoadingOlderRef.current) {
+      return;
+    }
+    
     // Solo hacer scroll automático en carga inicial o si el usuario está cerca del fondo
     if (isInitialLoad) {
       // Scroll instantáneo en la carga inicial
@@ -196,19 +311,14 @@ export function MessagesView() {
       scrollToBottom();
     }
     
-    // Marcar mensajes del otro usuario como leídos
+    // Marcar mensajes del otro usuario como leídos (sin recargar - se actualiza por suscripción)
     if (user && messages.length > 0) {
       const unreadMessages = messages
-        .filter(m => m.senderId !== user.id && !(m.readBy || []).includes(user.id))
+        .filter(m => m.senderId !== user.id && !(m.readBy || []).includes(user.id) && !m.id.startsWith('temp-'))
         .map(m => m.id);
       
       if (unreadMessages.length > 0) {
-        import('@/lib/storage-supabase').then(({ markMessagesAsRead }) => {
-          markMessagesAsRead(unreadMessages, user.id).then(() => {
-            // Reload messages to show updated read status
-            loadMessages();
-          });
-        });
+        markMessagesAsRead(unreadMessages, user.id);
       }
     }
   }, [messages, user]);
@@ -230,22 +340,72 @@ export function MessagesView() {
   }, [showAttachmentMenu, showProfileMenu]);
 
   const loadMessages = async () => {
-    const data = await getMessages();
-    // Limitar a los últimos 50 mensajes inicialmente
-    const recentMessages = data.slice(-50);
-    setMessages(recentMessages);
+    const { messages: data, hasMore } = await getMessagesPaginated(50);
+    setMessages(data);
+    setHasMoreMessages(hasMore);
   };
+
+  const loadOlderMessages = useCallback(async () => {
+    if (isLoadingMore || !hasMoreMessages || messages.length === 0) return;
+    
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    // Marcar que estamos cargando mensajes antiguos para evitar scroll al fondo
+    isLoadingOlderRef.current = true;
+    setIsLoadingMore(true);
+    
+    const oldestMessage = messages[0];
+    const previousScrollHeight = container.scrollHeight;
+    const previousScrollTop = container.scrollTop;
+    
+    try {
+      const { messages: olderMessages, hasMore } = await getMessagesPaginated(
+        30,
+        oldestMessage.timestamp
+      );
+      
+      if (olderMessages.length > 0) {
+        setMessages(prev => [...olderMessages, ...prev]);
+        setHasMoreMessages(hasMore);
+        
+        // Mantener la posición del scroll después de agregar mensajes arriba
+        setTimeout(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            const heightDiff = newScrollHeight - previousScrollHeight;
+            container.scrollTop = previousScrollTop + heightDiff;
+          }
+          // Desactivar el flag después de ajustar el scroll
+          isLoadingOlderRef.current = false;
+        }, 50);
+      } else {
+        setHasMoreMessages(false);
+        isLoadingOlderRef.current = false;
+      }
+    } catch (error) {
+      console.error('Error loading older messages:', error);
+      isLoadingOlderRef.current = false;
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasMoreMessages, messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
 
-  // Detectar si el usuario está cerca del fondo del chat
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  // Detectar si el usuario está cerca del fondo del chat y cargar más al llegar arriba
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const element = e.currentTarget;
     const isAtBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
     setIsNearBottom(isAtBottom);
-  };
+    
+    // Cargar más mensajes cuando el usuario hace scroll cerca del top (estilo WhatsApp)
+    if (element.scrollTop < 150 && !isLoadingMore && hasMoreMessages) {
+      loadOlderMessages();
+    }
+  }, [isLoadingMore, hasMoreMessages, loadOlderMessages]);
 
   const handleSend = async () => {
     if (!user || (!newMessage.trim() && !selectedFile)) return;
@@ -254,7 +414,6 @@ export function MessagesView() {
     
     // Handle edit mode
     if (editingMessage) {
-      const { editMessage } = await import('@/lib/storage-supabase');
       const success = await editMessage(editingMessage.id, messageText);
       
       if (success) {
@@ -276,7 +435,6 @@ export function MessagesView() {
     // Upload file if present
     if (selectedFile) {
       setUploading(true);
-      const { uploadMedia } = await import('@/lib/storage-supabase');
       mediaUrl = await uploadMedia(selectedFile, user.id);
       setUploading(false);
       
@@ -423,7 +581,6 @@ export function MessagesView() {
     
     if (lastTap && lastTap.messageId === msg.id && (now - lastTap.time) < 300) {
       // Es un doble tap
-      const { toggleReaction } = await import('@/lib/storage-supabase');
       await toggleReaction(msg.id, user?.id || '', '❤️');
       setLastTap(null);
     } else {
@@ -489,7 +646,6 @@ export function MessagesView() {
   const confirmDeleteMessage = async () => {
     if (!deleteMessageData) return;
     
-    const { deleteMessage } = await import('@/lib/storage-supabase');
     const success = await deleteMessage(deleteMessageData.id, deleteMessageData.mediaUrl);
     
     if (success) {
@@ -526,7 +682,6 @@ export function MessagesView() {
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!user) return;
     
-    const { toggleReaction } = await import('@/lib/storage-supabase');
     await toggleReaction(messageId, user.id, emoji);
     setShowReactions(null);
     setShowMenu(null);
@@ -651,7 +806,6 @@ export function MessagesView() {
       
       // Upload audio to storage
       const audioFile = new File([audioBlob], `audio-${Date.now()}.${extension}`, { type: mimeType });
-      const { uploadMedia } = await import('@/lib/storage-supabase');
       const mediaUrl = await uploadMedia(audioFile, user.id);
 
       setUploading(false);
@@ -728,7 +882,7 @@ export function MessagesView() {
   };
 
   return (
-    <PageTransition className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-3 sticky top-0 z-10">
         <div className="flex flex-col">
@@ -770,7 +924,36 @@ export function MessagesView() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-3"
+        onScroll={handleScroll}
+      >
+        {/* Button to load older messages (estilo Telegram) */}
+        {hasMoreMessages && !isLoadingMore && messages.length > 0 && (
+          <div className="flex justify-center py-2">
+            <button
+              onClick={loadOlderMessages}
+              className="px-4 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-md transition-colors"
+            >
+              ↑ Cargar mensajes anteriores
+            </button>
+          </div>
+        )}
+        {/* Loading indicator for older messages */}
+        {isLoadingMore && (
+          <div className="flex justify-center py-3">
+            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+              <span className="text-sm">Cargando mensajes...</span>
+            </div>
+          </div>
+        )}
+        {!hasMoreMessages && messages.length > 0 && (
+          <div className="text-center text-xs text-gray-400 dark:text-gray-500 py-2">
+            📜 Inicio de la conversación
+          </div>
+        )}
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -812,10 +995,14 @@ export function MessagesView() {
                 <div className="mb-2">
                   {msg.mediaType === 'image' ? (
                     <img 
-                      src={msg.mediaUrl} 
+                      src={getOptimizedImageUrl(msg.mediaUrl, { width: 400, quality: 80 })} 
                       alt="Imagen" 
-                      className="max-w-full rounded-lg max-h-80 object-cover"
+                      className="w-full rounded-lg object-cover"
+                      style={{ aspectRatio: '4/3', maxHeight: '320px' }}
                       loading="lazy"
+                      decoding="async"
+                      width={400}
+                      height={300}
                     />
                   ) : msg.mediaType === 'video' ? (
                     <video 
@@ -1161,6 +1348,6 @@ export function MessagesView() {
         cancelText="Cancelar"
         variant="danger"
       />
-    </PageTransition>
+    </div>
   );
 }

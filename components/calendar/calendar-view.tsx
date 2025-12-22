@@ -36,6 +36,7 @@ export function CalendarView() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [deleteSlotId, setDeleteSlotId] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const router = useRouter();
   const isChangingDate = useRef(false);
 
@@ -222,8 +223,22 @@ export function CalendarView() {
     const start = parseInt(startHour);
     const end = parseInt(endHour);
 
-    if (start >= end) return;
+    if (isNaN(start) || isNaN(end)) {
+      setValidationError('Por favor ingresa horas válidas');
+      return;
+    }
 
+    if (start >= end) {
+      setValidationError('La hora de inicio debe ser menor que la hora de fin');
+      return;
+    }
+
+    if (start < 0 || start > 23 || end < 1 || end > 24) {
+      setValidationError('Las horas deben estar entre 0 y 24');
+      return;
+    }
+
+    setValidationError(null);
     const dateStr = getDateString(selectedDate);
     
     try {
@@ -283,6 +298,7 @@ export function CalendarView() {
     setEndHour('18');
     setNote('');
     setEventType('unavailable');
+    setValidationError(null);
     setShowForm(false);
   };
 
@@ -469,7 +485,7 @@ export function CalendarView() {
                   min="0"
                   max="23"
                   value={startHour}
-                  onChange={(e) => setStartHour(e.target.value)}
+                  onChange={(e) => { setStartHour(e.target.value); setValidationError(null); }}
                   className="w-full"
                   placeholder="Ej: 9"
                 />
@@ -484,7 +500,7 @@ export function CalendarView() {
                   min="1"
                   max="24"
                   value={endHour}
-                  onChange={(e) => setEndHour(e.target.value)}
+                  onChange={(e) => { setEndHour(e.target.value); setValidationError(null); }}
                   className="w-full"
                   placeholder="Ej: 18"
                 />
@@ -529,7 +545,17 @@ export function CalendarView() {
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
+
+            {validationError && (
+              <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
+                <p className="text-sm text-red-700 dark:text-red-300 text-center">
+                  ⚠️ {validationError}
+                </p>
+              </div>
+            )}
+
             <LoadingButton 
+              type="button"
               onClick={saveSlot} 
               className="w-full" 
               size="lg"

@@ -17,6 +17,10 @@ export const metadata: Metadata = {
   description: "Meeting availability app",
 };
 
+// Get Supabase URL for preconnect
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseHost = supabaseUrl ? new URL(supabaseUrl).origin : '';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -24,6 +28,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Preconnect to Supabase for faster API and storage requests */}
+        {supabaseHost && (
+          <>
+            <link rel="preconnect" href={supabaseHost} />
+            <link rel="dns-prefetch" href={supabaseHost} />
+          </>
+        )}
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

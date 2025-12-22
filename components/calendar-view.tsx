@@ -7,7 +7,7 @@ import { LoadingButton } from '@/components/ui/loading-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { User } from '@/lib/auth-supabase';
-import { TimeSlot, getTimeSlots, addTimeSlot, deleteTimeSlot } from '@/lib/storage-supabase';
+import { TimeSlot, getTimeSlots, addTimeSlot, deleteTimeSlot, updateLastSeen } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -78,6 +78,9 @@ export function CalendarView() {
 
     const currentUser: User = JSON.parse(userData);
     setUser(currentUser);
+    
+    // Actualizar last_seen al entrar a la app
+    updateLastSeen(currentUser.id, currentUser.username);
     
     // Cargar preferencia de dark mode
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
