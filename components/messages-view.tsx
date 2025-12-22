@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { User } from '@/lib/auth-supabase';
-import { Message, getMessages, sendMessage } from '@/lib/storage-supabase';
+import { Message, getMessages, sendMessage, updateLastSeen, getLastSeen } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { PageTransition } from '@/components/page-transition';
@@ -49,6 +49,7 @@ export function MessagesView() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingChannelRef = useRef<any>(null);
+  const lastTypingBroadcast = useRef<number>(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -101,11 +102,12 @@ export function MessagesView() {
       // Setup presence channel for online status
       const otherUserId = currentUser.id === '1' ? '2' : '1';
       
-      // Load initial last seen
-      const initialLastSeen = localStorage.getItem(`lastSeen_${otherUserId}`);
-      if (initialLastSeen) {
-        setOtherUserLastSeen(initialLastSeen);
-      }
+      // Load initial last seen from Supabase
+      getLastSeen(otherUserId).then(lastSeen => {
+        if (lastSeen) {
+          setOtherUserLastSeen(lastSeen);
+        }
+      });
       
       presenceChannelRef.current = supabase.channel('presence')
         .on('presence', { event: 'sync' }, () => {
@@ -116,11 +118,12 @@ export function MessagesView() {
           setOtherUserOnline(otherUserPresent);
           
           if (!otherUserPresent) {
-            // Get last seen from localStorage of the other user
-            const lastSeen = localStorage.getItem(`lastSeen_${otherUserId}`);
-            if (lastSeen) {
-              setOtherUserLastSeen(lastSeen);
-            }
+            // Get last seen from Supabase
+            getLastSeen(otherUserId).then(lastSeen => {
+              if (lastSeen) {
+                setOtherUserLastSeen(lastSeen);
+              }
+            });
           }
         })
         .subscribe(async (status) => {
@@ -134,9 +137,9 @@ export function MessagesView() {
     }
 
     return () => {
-      // Update last seen before leaving
+      // Update last seen in Supabase before leaving
       if (currentUser) {
-        localStorage.setItem(`lastSeen_${currentUser.id}`, new Date().toISOString());
+        updateLastSeen(currentUser.id);
       }
       
       channelPromise.then(channel => {
@@ -152,6 +155,36 @@ export function MessagesView() {
       if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
     };
   }, [router]);
+
+  // Update lastSeen periodically while user is active and on page unload
+  useEffect(() => {
+    if (!user) return;
+
+    // Update lastSeen every 30 seconds while on the page
+    const interval = setInterval(() => {
+      updateLastSeen(user.id);
+    }, 30000);
+
+    // Update lastSeen when user leaves the page
+    const handleBeforeUnload = () => {
+      updateLastSeen(user.id);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        updateLastSeen(user.id);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user]);
 
   useEffect(() => {
     // Solo hacer scroll automático en carga inicial o si el usuario está cerca del fondo
@@ -326,15 +359,19 @@ export function MessagesView() {
     }
   };
 
-  const handleTyping = () => {
-    if (user && typingChannelRef.current) {
+  // Debounced typing indicator - solo envía cada 2 segundos máximo
+  const handleTyping = useCallback(() => {
+    const now = Date.now();
+    // Solo enviar si pasaron más de 2 segundos desde el último broadcast
+    if (user && typingChannelRef.current && now - lastTypingBroadcast.current > 2000) {
+      lastTypingBroadcast.current = now;
       typingChannelRef.current.send({
         type: 'broadcast',
         event: 'typing',
         payload: { userId: user.id }
       });
     }
-  };
+  }, [user]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');

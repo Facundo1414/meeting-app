@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { User } from '@/lib/auth-supabase';
@@ -325,19 +324,8 @@ export function MonthView() {
         </div>
 
         {/* Grid de días */}
-        <motion.div 
-          className="grid grid-cols-7 gap-1"
-          initial={false}
-          animate="visible"
-          variants={{
-            visible: {
-              transition: {
-                staggerChildren: 0.01
-              }
-            }
-          }}
-        >
-          {monthDays.map((day, index) => {
+        <div className="grid grid-cols-7 gap-1">
+          {monthDays.map((day) => {
             const { my: mySlots, other: otherSlots } = getDaySlots(day);
             const today = isToday(day);
             const currentMo = isCurrentMonth(day);
@@ -345,25 +333,19 @@ export function MonthView() {
             const dateKey = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
 
             return (
-              <motion.div
+              <div
                 key={dateKey}
-                variants={{
-                  hidden: { opacity: 0, scale: 0.8 },
-                  visible: { opacity: 1, scale: 1 }
-                }}
                 onClick={() => {
                   if (!past) {
                     localStorage.setItem('selectedDate', day.toISOString());
                     router.push('/calendar');
                   }
                 }}
-                whileHover={!past ? { scale: 1.05 } : {}}
-                whileTap={!past ? { scale: 0.95 } : {}}
                 className={`
-                  min-h-20 p-2 rounded-lg border cursor-pointer transition-all
+                  min-h-20 p-2 rounded-lg border cursor-pointer transition-colors
                   ${today ? 'ring-2 ring-blue-400 bg-blue-50 dark:bg-blue-900/30' : ''}
                   ${!currentMo ? 'opacity-40' : ''}
-                  ${past ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}
+                  ${past ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600'}
                   ${currentMo && !past && !today ? 'bg-white dark:bg-gray-800' : ''}
                   border-gray-200 dark:border-gray-700
                 `}
@@ -402,10 +384,10 @@ export function MonthView() {
                     <div className="text-[10px] text-gray-500 dark:text-gray-400">+{(mySlots.length + otherSlots.length) - 4}</div>
                   )}
                 </div>
-              </motion.div>
+              </div>
             );
           })}
-        </motion.div>
+        </div>
       </div>
       </div>
     </PageTransition>

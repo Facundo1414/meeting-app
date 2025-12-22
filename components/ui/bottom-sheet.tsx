@@ -43,7 +43,8 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 z-50 bg-background rounded-t-3xl shadow-2xl max-h-[90vh] overflow-hidden"
+            className="fixed inset-x-0 bottom-0 z-50 bg-background rounded-t-3xl shadow-2xl max-h-[90vh] overflow-hidden swipe-ignore"
+            role="dialog"
           >
             {/* Handle bar */}
             <div className="flex justify-center pt-3 pb-2">

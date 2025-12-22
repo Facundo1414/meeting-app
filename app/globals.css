@@ -256,3 +256,30 @@
   height: 4px;
   border-radius: 2px;
 }
+
+/* Prevent CLS - reserve space for dynamic content */
+.min-h-card {
+  min-height: 120px;
+}
+
+/* Optimized transitions - only animate necessary properties */
+.transition-colors {
+  transition-property: color, background-color, border-color;
+  transition-duration: 150ms;
+}
+
+/* Reduce paint on hover states */
+.hover-optimized:hover {
+  will-change: background-color;
+}
+
+/* Image loading placeholder to prevent CLS */
+img {
+  background-color: #f3f4f6;
+}
+
+/* Force GPU acceleration for smooth scrolling */
+.scroll-container {
+  -webkit-overflow-scrolling: touch;
+  transform: translateZ(0);
+}

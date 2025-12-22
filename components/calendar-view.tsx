@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -353,18 +352,11 @@ export function CalendarView() {
               className="relative bg-blue-500 text-white hover:bg-blue-600 border-blue-600 px-2 text-xs h-8"
             >
               💬
-              <AnimatePresence>
-                {unreadCount > 0 && (
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
-                    className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold text-[10px] animate-bounce"
-                  >
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </motion.span>
-                )}
-              </AnimatePresence>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold text-[10px]">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </Button>
             
             {/* Menú hamburguesa de perfil */}
@@ -455,19 +447,8 @@ export function CalendarView() {
             {mySlots.length === 0 ? (
               <EmptyState type="calendar" />
             ) : (
-              <motion.div 
-                className="space-y-2"
-                initial="hidden"
-                animate="visible"
-                variants={{
-                  visible: {
-                    transition: {
-                      staggerChildren: 0.05
-                    }
-                  }
-                }}
-              >
-                {mySlots.map((slot, index) => {
+              <div className="space-y-2">
+                {mySlots.map((slot) => {
                   const type = slot.eventType || 'unavailable';
                   
                   // Definir clases completas para cada tipo
@@ -504,12 +485,8 @@ export function CalendarView() {
                   }
                   
                   return (
-                  <motion.div
+                  <div
                     key={slot.id}
-                    variants={{
-                      hidden: { opacity: 0, y: 20 },
-                      visible: { opacity: 1, y: 0 }
-                    }}
                     className={`p-3 ${bgClass} border-2 ${borderClass} rounded-lg`}
                   >
                     <div className="flex items-start justify-between">
@@ -541,10 +518,10 @@ export function CalendarView() {
                         </Button>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 );
                 })}
-              </motion.div>
+              </div>
             )}
           </CardContent>
         </Card>

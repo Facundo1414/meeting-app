@@ -2,7 +2,6 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -42,12 +41,8 @@ export function LoginForm() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-    >
-      <Card className={`w-full max-w-md relative z-10 shadow-xl ${shake ? 'animate-shake' : ''}`}>
+    <div className="w-full max-w-md">
+      <Card className={`relative z-10 shadow-xl ${shake ? 'animate-shake' : ''}`}>
         <CardHeader className="space-y-1">
           <CardTitle className="text-3xl font-bold text-center bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Calendar
@@ -104,6 +99,6 @@ export function LoginForm() {
           </form>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }

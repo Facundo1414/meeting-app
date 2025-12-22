@@ -541,3 +541,49 @@ export async function toggleReaction(
     return false;
   }
 }
+// Update user's last seen timestamp
+export async function updateLastSeen(userId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from("users_meeting_app")
+      .update({
+        last_seen: new Date().toISOString(),
+      })
+      .eq("id", userId);
+
+    if (error) {
+      console.error("Error updating last seen:", error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error in updateLastSeen:", error);
+    return false;
+  }
+}
+
+// Get user's last seen timestamp
+export async function getLastSeen(userId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("users_meeting_app")
+      .select("last_seen")
+      .eq("id", userId)
+      .single();
+
+    if (error) {
+      // Si no hay datos aún, no es un error crítico
+      if (error.code === "PGRST116") {
+        return null;
+      }
+      console.error("Error fetching last seen:", error);
+      return null;
+    }
+
+    return data?.last_seen || null;
+  } catch (error) {
+    console.error("Error in getLastSeen:", error);
+    return null;
+  }
+}
