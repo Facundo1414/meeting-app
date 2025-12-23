@@ -52,7 +52,10 @@ export function MessagesView() {
   const [otherUserOnline, setOtherUserOnline] = useState(false);
   const [otherUserLastSeen, setOtherUserLastSeen] = useState<string | null>(null);
   const [deleteMessageData, setDeleteMessageData] = useState<{id: string; mediaUrl?: string} | null>(null);
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
+  const [imageScale, setImageScale] = useState(1);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const presenceChannelRef = useRef<any>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -324,6 +327,13 @@ export function MessagesView() {
       markMessagesAsRead(unreadMessages, user.id);
     }
   }, [messages, user]);
+
+  // Reset textarea height cuando se limpia el mensaje
+  useEffect(() => {
+    if (newMessage === '' && textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  }, [newMessage]);
 
   // Cerrar menús al hacer clic fuera
   useEffect(() => {
@@ -726,6 +736,11 @@ export function MessagesView() {
     });
     setShowMenu(null);
     setShowReactions(null);
+    // Hacer focus en el input y scroll al fondo
+    setTimeout(() => {
+      textareaRef.current?.focus();
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   const handleEditMessage = (msg: Message) => {
@@ -900,6 +915,39 @@ export function MessagesView() {
     });
   };
 
+  const getDateSeparator = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Resetear horas para comparar solo fechas
+    const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const yesterdayDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+    
+    if (messageDate.getTime() === todayDate.getTime()) {
+      return 'Hoy';
+    } else if (messageDate.getTime() === yesterdayDate.getTime()) {
+      return 'Ayer';
+    } else {
+      return date.toLocaleDateString('es-AR', { 
+        day: 'numeric', 
+        month: 'long',
+        year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+      });
+    }
+  };
+
+  const shouldShowDateSeparator = (currentMsg: Message, previousMsg: Message | null) => {
+    if (!previousMsg) return true;
+    
+    const currentDate = new Date(currentMsg.timestamp);
+    const previousDate = new Date(previousMsg.timestamp);
+    
+    return currentDate.toDateString() !== previousDate.toDateString();
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Header */}
@@ -973,12 +1021,26 @@ export function MessagesView() {
             📜 Inicio de la conversación
           </div>
         )}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex relative items-center gap-1 ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
-            data-message-options
-          >
+        {messages.map((msg, index) => {
+          const previousMsg = index > 0 ? messages[index - 1] : null;
+          const showDateSeparator = shouldShowDateSeparator(msg, previousMsg);
+          
+          return (
+            <div key={msg.id}>
+              {/* Separador de fecha */}
+              {showDateSeparator && (
+                <div className="flex justify-center my-3">
+                  <div className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-3 py-1 rounded-full">
+                    {getDateSeparator(msg.timestamp)}
+                  </div>
+                </div>
+              )}
+              
+              {/* Mensaje */}
+              <div
+                className={`flex relative items-center gap-1 ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
+                data-message-options
+              >
             {/* Botón de opciones - izquierda para mensajes propios */}
             {!msg.id.startsWith('temp-') && msg.senderId === user?.id && (
               <button
@@ -986,7 +1048,7 @@ export function MessagesView() {
                   e.stopPropagation();
                   setShowMenu(showMenu === msg.id ? null : msg.id);
                 }}
-                className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-200 dark:active:bg-gray-700 flex-shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-200 dark:active:bg-gray-700 shrink-0"
                 aria-label="Opciones"
               >
                 <span className="text-base text-gray-600 dark:text-gray-300">⋯</span>
@@ -1018,9 +1080,13 @@ export function MessagesView() {
                     <img 
                       src={msg.mediaUrl}
                       alt="Imagen" 
-                      className="w-full rounded-lg"
+                      className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                       style={{ maxHeight: '400px', minHeight: '100px', objectFit: 'contain' }}
                       loading="lazy"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFullScreenImage(msg.mediaUrl || null);
+                      }}
                       onError={(e) => {
                         console.error('Error loading image:', msg.mediaUrl);
                       }}
@@ -1077,7 +1143,7 @@ export function MessagesView() {
                   e.stopPropagation();
                   setShowMenu(showMenu === msg.id ? null : msg.id);
                 }}
-                className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-200 dark:active:bg-gray-700 flex-shrink-0"
+                className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-200 dark:active:bg-gray-700 shrink-0"
                 aria-label="Opciones"
               >
                 <span className="text-base text-gray-600 dark:text-gray-300">⋯</span>
@@ -1143,17 +1209,19 @@ export function MessagesView() {
                 ))}
               </div>
             )}
+            </div>
           </div>
-        ))}
+        );
+        })}
         <div ref={messagesEndRef} />        
         {/* Indicador de escribiendo */}
         {isOtherUserTyping && (
           <div className="flex justify-start">
-            <div className="bg-white dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-3 max-w-[75%]">
+            <div className="bg-white dark:bg-gray-700 border dark:border-gray-600 rounded-lg px-3 py-2">
               <div className="flex gap-1 items-center">
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
               </div>
             </div>
           </div>
@@ -1351,11 +1419,17 @@ export function MessagesView() {
             </Button>
           )}
 
-          <Input
+          <textarea
+            ref={textareaRef}
             value={newMessage}
             onChange={(e) => {
               setNewMessage(e.target.value);
               handleTyping();
+              // Auto-expand
+              if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+                textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
+              }
             }}
             onKeyPress={handleKeyPress}
             placeholder={
@@ -1365,8 +1439,9 @@ export function MessagesView() {
                   ? "Mensaje opcional..." 
                   : "Escribe un mensaje..."
             }
-            className="flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
+            className="flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 rounded-md border border-gray-300 px-3 py-2 resize-none min-h-10 max-h-30"
             disabled={uploading || isRecording || !!audioBlob}
+            rows={1}
           />
           <Button 
             onClick={handleSend} 
@@ -1389,6 +1464,31 @@ export function MessagesView() {
         cancelText="Cancelar"
         variant="danger"
       />
+
+      {/* Visor de imagen en pantalla completa */}
+      {fullScreenImage && (
+        <div 
+          className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4"
+          onClick={() => setFullScreenImage(null)}
+        >
+          <button
+            onClick={() => setFullScreenImage(null)}
+            className="absolute top-4 right-4 text-white text-3xl w-10 h-10 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors z-10"
+            aria-label="Cerrar"
+          >
+            ✕
+          </button>
+          <img
+            src={fullScreenImage}
+            alt="Imagen en pantalla completa"
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              touchAction: 'pinch-zoom',
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }

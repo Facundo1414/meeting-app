@@ -619,6 +619,22 @@ export function CalendarView() {
             )}
           </CardContent>
         </Card>
+
+        {/* Botón del juego Quick Draw */}
+        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
+          <CardContent className="p-4">
+            <Button 
+              onClick={() => router.push('/game')}
+              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold py-6 text-lg shadow-lg"
+              size="lg"
+            >
+              🎨 Quick Draw - Jugar con tu amigo
+            </Button>
+            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Dibujen y adivinen palabras juntos
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Bottom Sheet para agregar/editar eventos */}
