@@ -12,12 +12,17 @@ export function getOptimizedImageUrl(
     format?: "webp" | "avif" | "origin";
   } = {}
 ): string {
+  // Return original URL if invalid or not a Supabase URL
+  if (!url || typeof url !== "string") {
+    return url || "";
+  }
+
   // Only transform Supabase storage URLs
-  if (!url || !url.includes("supabase.co/storage")) {
+  if (!url.includes("supabase.co/storage")) {
     return url;
   }
 
-  const { width = 400, height, quality = 75, format = "webp" } = options;
+  const { width = 400, height, quality = 75, format = "origin" } = options;
 
   // Supabase transformation URL format:
   // /storage/v1/render/image/public/bucket/path?width=X&height=Y&quality=Q
@@ -35,6 +40,12 @@ export function getOptimizedImageUrl(
       "/storage/v1/render/image/public/"
     );
 
+    // If the path didn't change, the URL might already be correct or in a different format
+    if (newPath === urlObj.pathname) {
+      console.warn("Image URL path not transformed:", url);
+      return url;
+    }
+
     urlObj.pathname = newPath;
     urlObj.searchParams.set("width", width.toString());
     if (height) {
@@ -46,7 +57,8 @@ export function getOptimizedImageUrl(
     }
 
     return urlObj.toString();
-  } catch {
+  } catch (error) {
+    console.error("Error optimizing image URL:", error);
     return url;
   }
 }

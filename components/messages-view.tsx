@@ -370,15 +370,18 @@ export function MessagesView() {
         setHasMoreMessages(hasMore);
         
         // Mantener la posición del scroll después de agregar mensajes arriba
-        setTimeout(() => {
+        // Usar requestAnimationFrame para mejor sincronización con el render
+        requestAnimationFrame(() => {
           if (container) {
             const newScrollHeight = container.scrollHeight;
             const heightDiff = newScrollHeight - previousScrollHeight;
             container.scrollTop = previousScrollTop + heightDiff;
           }
-          // Desactivar el flag después de ajustar el scroll
-          isLoadingOlderRef.current = false;
-        }, 50);
+          // Esperar un frame más antes de desactivar el flag para asegurar que no haya interferencia
+          requestAnimationFrame(() => {
+            isLoadingOlderRef.current = false;
+          });
+        });
       } else {
         setHasMoreMessages(false);
         isLoadingOlderRef.current = false;
@@ -995,14 +998,14 @@ export function MessagesView() {
                 <div className="mb-2">
                   {msg.mediaType === 'image' ? (
                     <img 
-                      src={getOptimizedImageUrl(msg.mediaUrl, { width: 400, quality: 80 })} 
+                      src={msg.mediaUrl}
                       alt="Imagen" 
-                      className="w-full rounded-lg object-cover"
-                      style={{ aspectRatio: '4/3', maxHeight: '320px' }}
+                      className="w-full rounded-lg"
+                      style={{ maxHeight: '400px', minHeight: '100px', objectFit: 'contain' }}
                       loading="lazy"
-                      decoding="async"
-                      width={400}
-                      height={300}
+                      onError={(e) => {
+                        console.error('Error loading image:', msg.mediaUrl);
+                      }}
                     />
                   ) : msg.mediaType === 'video' ? (
                     <video 
