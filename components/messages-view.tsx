@@ -310,16 +310,18 @@ export function MessagesView() {
     } else if (isNearBottom) {
       scrollToBottom();
     }
+  }, [messages, isInitialLoad, isNearBottom]);
+
+  // Separar el marcado de mensajes como leídos en su propio efecto
+  useEffect(() => {
+    if (!user || messages.length === 0 || isLoadingOlderRef.current) return;
     
-    // Marcar mensajes del otro usuario como leídos (sin recargar - se actualiza por suscripción)
-    if (user && messages.length > 0) {
-      const unreadMessages = messages
-        .filter(m => m.senderId !== user.id && !(m.readBy || []).includes(user.id) && !m.id.startsWith('temp-'))
-        .map(m => m.id);
-      
-      if (unreadMessages.length > 0) {
-        markMessagesAsRead(unreadMessages, user.id);
-      }
+    const unreadMessages = messages
+      .filter(m => m.senderId !== user.id && !(m.readBy || []).includes(user.id) && !m.id.startsWith('temp-'))
+      .map(m => m.id);
+    
+    if (unreadMessages.length > 0) {
+      markMessagesAsRead(unreadMessages, user.id);
     }
   }, [messages, user]);
 
@@ -333,11 +335,17 @@ export function MessagesView() {
       if (showProfileMenu && !target.closest('.profile-menu-container')) {
         setShowProfileMenu(false);
       }
+      if (showMenu && !target.closest('[data-message-options]')) {
+        setShowMenu(null);
+      }
+      if (showReactions && !target.closest('[data-reactions-picker]')) {
+        setShowReactions(null);
+      }
     };
 
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [showAttachmentMenu, showProfileMenu]);
+  }, [showAttachmentMenu, showProfileMenu, showMenu, showReactions]);
 
   const loadMessages = async () => {
     const { messages: data, hasMore } = await getMessagesPaginated(50);
@@ -370,16 +378,19 @@ export function MessagesView() {
         setHasMoreMessages(hasMore);
         
         // Mantener la posición del scroll después de agregar mensajes arriba
-        // Usar requestAnimationFrame para mejor sincronización con el render
+        // Usar requestAnimationFrame con múltiples frames para asegurar que el DOM se haya actualizado completamente
         requestAnimationFrame(() => {
-          if (container) {
-            const newScrollHeight = container.scrollHeight;
-            const heightDiff = newScrollHeight - previousScrollHeight;
-            container.scrollTop = previousScrollTop + heightDiff;
-          }
-          // Esperar un frame más antes de desactivar el flag para asegurar que no haya interferencia
           requestAnimationFrame(() => {
-            isLoadingOlderRef.current = false;
+            if (container) {
+              const newScrollHeight = container.scrollHeight;
+              const heightDiff = newScrollHeight - previousScrollHeight;
+              // Ajustar scroll manteniendo la posición visual
+              container.scrollTop = previousScrollTop + heightDiff;
+            }
+            // Esperar un poco más antes de desactivar el flag
+            setTimeout(() => {
+              isLoadingOlderRef.current = false;
+            }, 100);
           });
         });
       } else {
@@ -400,6 +411,11 @@ export function MessagesView() {
 
   // Detectar si el usuario está cerca del fondo del chat y cargar más al llegar arriba
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    // Ignorar eventos de scroll mientras se están cargando mensajes antiguos
+    if (isLoadingOlderRef.current) {
+      return;
+    }
+    
     const element = e.currentTarget;
     const isAtBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
     setIsNearBottom(isAtBottom);
@@ -960,27 +976,29 @@ export function MessagesView() {
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex relative ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
+            className={`flex relative items-center gap-1 ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
+            data-message-options
           >
+            {/* Botón de opciones - izquierda para mensajes propios */}
+            {!msg.id.startsWith('temp-') && msg.senderId === user?.id && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(showMenu === msg.id ? null : msg.id);
+                }}
+                className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-200 dark:active:bg-gray-700 flex-shrink-0"
+                aria-label="Opciones"
+              >
+                <span className="text-base text-gray-600 dark:text-gray-300">⋯</span>
+              </button>
+            )}
+            
             <div
-              className={`max-w-[75%] rounded-lg p-3 relative ${
+              className={`max-w-[75%] rounded-lg p-3 relative select-none ${
                 msg.senderId === user?.id
                   ? 'bg-blue-500 text-white'
                   : 'bg-white dark:bg-gray-700 border dark:border-gray-600 dark:text-gray-100'
               }`}
-              onTouchStart={(e) => {
-                if (!msg.id.startsWith('temp-')) {
-                  handleLongPressStart(msg.id);
-                  handleTouchStart(e, msg);
-                }
-              }}
-              onTouchEnd={(e) => {
-                handleLongPressEnd();
-                handleTouchEnd(e, msg);
-              }}
-              onMouseDown={() => !msg.id.startsWith('temp-') && handleLongPressStart(msg.id)}
-              onMouseUp={handleLongPressEnd}
-              onMouseLeave={handleLongPressEnd}
               onClick={() => !msg.id.startsWith('temp-') && handleDoubleTap(msg)}
             >
               {/* Reply reference */}
@@ -1051,9 +1069,26 @@ export function MessagesView() {
                 </div>
               )}
             </div>
+            
+            {/* Botón de opciones - derecha para mensajes del otro usuario */}
+            {!msg.id.startsWith('temp-') && msg.senderId !== user?.id && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(showMenu === msg.id ? null : msg.id);
+                }}
+                className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-200 dark:active:bg-gray-700 flex-shrink-0"
+                aria-label="Opciones"
+              >
+                <span className="text-base text-gray-600 dark:text-gray-300">⋯</span>
+              </button>
+            )}
+            
             {/* Menú contextual */}
             {showMenu === msg.id && (
-              <div className="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-1 min-w-35 z-50">
+              <div className={`absolute top-0 ${
+                msg.senderId === user?.id ? 'left-8' : 'right-8'
+              } bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-1 min-w-40 z-50`}>
                 <button
                   onClick={() => setShowReactions(msg.id)}
                   className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
@@ -1093,7 +1128,10 @@ export function MessagesView() {
             )}
             {/* Selector de reacciones */}
             {showReactions === msg.id && (
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-full shadow-2xl border dark:border-gray-700 px-3 py-2 z-50 flex gap-2">
+              <div 
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-full shadow-2xl border dark:border-gray-700 px-3 py-2 z-50 flex gap-2"
+                data-reactions-picker
+              >
                 {['❤️', '👍', '😂', '😮', '😢', '🙏'].map((emoji) => (
                   <button
                     key={emoji}
