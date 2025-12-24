@@ -25,6 +25,7 @@ interface GameInvitationProps {
     pointsPerCorrect: number;
     difficulty: 'easy' | 'medium' | 'hard';
   }) => void;
+  onShowInvitationSetup: () => void;
 }
 
 export function GameInvitation({ 
@@ -32,7 +33,8 @@ export function GameInvitation({
   opponentId, 
   opponentUsername,
   isOpponentOnline,
-  onGameStart 
+  onGameStart,
+  onShowInvitationSetup
 }: GameInvitationProps) {
   const [sentInvitation, setSentInvitation] = useState<GameInvitationType | null>(null);
   const [receivedInvitation, setReceivedInvitation] = useState<GameInvitationType | null>(null);
@@ -130,22 +132,8 @@ export function GameInvitation({
   }, [timeRemaining, sentInvitation]);
 
   const sendInvitation = async () => {
-    const invitation = await sendGameInvitation(
-      currentUser.id,
-      opponentId,
-      {
-        maxRounds: 10,
-        roundTime: 60,
-        pointsPerCorrect: 10,
-        difficulty: 'medium',
-      }
-    );
-
-    if (invitation && invitation.expiresAt) {
-      setSentInvitation(invitation);
-      const timeLeft = new Date(invitation.expiresAt).getTime() - Date.now();
-      setTimeRemaining(Math.max(0, timeLeft));
-    }
+    // Mostrar pantalla de configuración antes de enviar
+    onShowInvitationSetup();
   };
 
   const acceptInvitation = async () => {

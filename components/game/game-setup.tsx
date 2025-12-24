@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Play, Settings } from 'lucide-react';
+import { Play, Settings, Send } from 'lucide-react';
 
 interface GameSettings {
   maxRounds: number;
@@ -18,9 +18,10 @@ interface GameSetupProps {
   onCancel: () => void;
   initialSettings?: GameSettings;
   readonly?: boolean;
+  isSendingInvitation?: boolean;
 }
 
-export function GameSetup({ onStartGame, onCancel, initialSettings, readonly = false }: GameSetupProps) {
+export function GameSetup({ onStartGame, onCancel, initialSettings, readonly = false, isSendingInvitation = false }: GameSetupProps) {
   const [maxRounds, setMaxRounds] = useState(initialSettings?.maxRounds || 10);
   const [roundTime, setRoundTime] = useState(initialSettings?.roundTime || 60);
   const [pointsPerCorrect, setPointsPerCorrect] = useState(initialSettings?.pointsPerCorrect || 10);
@@ -218,8 +219,17 @@ export function GameSetup({ onStartGame, onCancel, initialSettings, readonly = f
             className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 gap-2"
             size="lg"
           >
-            <Play className="h-5 w-5" />
-            Comenzar Juego
+            {isSendingInvitation ? (
+              <>
+                <Send className="h-5 w-5" />
+                Enviar Invitación
+              </>
+            ) : (
+              <>
+                <Play className="h-5 w-5" />
+                Comenzar Juego
+              </>
+            )}
           </Button>
         </div>
       </Card>

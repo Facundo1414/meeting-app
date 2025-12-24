@@ -22,16 +22,22 @@ import {
   createNewGame, 
   nextRound, 
   checkGuess,
-  clearGameState,
-  loadGameHistory,
-  GameHistory as LocalGameHistory
+  clearGameState
 } from '@/lib/game-storage';
 import {
   saveGameHistoryToSupabase as saveGameHistorySupabase,
   getGameHistory,
-  GameHistory
+  GameHistory,
+  updateGameSession,
+  endGameSession,
+  createGameSession,
+  sendGameInvitation,
+  subscribeToGameSession,
+  getActiveGameSession,
+  forceEndAllUserSessions,
 } from '@/lib/game-supabase';
 import { ArrowLeft, Trophy, History, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 const DEFAULT_MAX_ROUNDS = 10;
 const DEFAULT_ROUND_TIME = 60;
@@ -60,6 +66,9 @@ export default function GamePage() {
   const [showInvitation, setShowInvitation] = useState(false);
   const [opponentUsername, setOpponentUsername] = useState<string>('');
   const [fromInvitation, setFromInvitation] = useState(false);
+  const [sendingInvitation, setSendingInvitation] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const [gameSettings, setGameSettings] = useState<GameSettings>({
     maxRounds: DEFAULT_MAX_ROUNDS,
     roundTime: DEFAULT_ROUND_TIME,
@@ -107,22 +116,113 @@ export default function GamePage() {
       setGameState(saved);
     }
 
-    // Load history
-    setHistory(loadGameHistory());
+    // Load history from Supabase
+    const loadHistory = async () => {
+      try {
+        const history = await getGameHistory(user.id);
+        setHistory(history);
+      } catch (error) {
+        console.error('Error loading game history:', error);
+        toast.error('Error al cargar el historial de partidas');
+      }
+    };
+    loadHistory();
+
+    // Check for active game session
+    const checkActiveSession = async () => {
+      const session = await getActiveGameSession(user.id);
+      if (session) {
+        setSessionId(session.id);
+        // Cargar el estado del juego desde la sesión
+        const sessionGame: GameState = {
+          currentDrawer: session.current_drawer_id,
+          currentWord: session.word_to_guess,
+          wordToGuess: session.word_to_guess,
+          drawing: session.drawing_data || '',
+          round: session.round,
+          scores: {
+            [session.player1_id]: session.player1_score,
+            [session.player2_id]: session.player2_score,
+          },
+          guesses: [],
+          startTime: Date.now(),
+          isActive: session.is_active,
+        };
+        setGameState(sessionGame);
+      }
+    };
+    checkActiveSession();
 
     return () => {
       clearInterval(lastSeenInterval);
     };
   }, [router]);
 
+  // Subscribe to game session updates
+  useEffect(() => {
+    if (!sessionId || !currentUser) return;
+
+    const setupSubscription = async () => {
+      const channel = subscribeToGameSession(sessionId, (session) => {
+        // Actualizar el estado del juego con los datos de la sesión
+        setGameState(prev => {
+          if (!prev) return null;
+          
+          return {
+            ...prev,
+            currentDrawer: session.current_drawer_id,
+            currentWord: session.word_to_guess,
+            wordToGuess: session.word_to_guess,
+            drawing: session.drawing_data || '',
+            round: session.round,
+            scores: {
+              [session.player1_id]: session.player1_score,
+              [session.player2_id]: session.player2_score,
+            },
+            isActive: session.is_active,
+          };
+        });
+      });
+
+      return () => {
+        channel.unsubscribe();
+      };
+    };
+
+    const cleanup = setupSubscription();
+    return () => {
+      cleanup.then(fn => fn && fn());
+    };
+  }, [sessionId, currentUser]);
+
+  // Countdown effect
+  useEffect(() => {
+    if (countdown === null) return;
+    
+    if (countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else {
+      // Countdown terminado, limpiar
+      setCountdown(null);
+    }
+  }, [countdown]);
+
   // Memoize the onGameStart handler to prevent unnecessary re-renders
+  // Este se llama cuando alguien ACEPTA una invitación - debe iniciar el juego directo
   const handleGameStart = useCallback((settings: GameSettings) => {
-    setGameSettings(settings);
-    setFromInvitation(true);
+    startNewGame(settings);
+  }, []);
+
+  // Este se llama cuando alguien quiere ENVIAR una invitación - mostrar configuración
+  const handleShowInvitationSetup = useCallback(() => {
+    setSendingInvitation(true);
     setShowSetup(true);
   }, []);
 
-  const startNewGame = (settings?: GameSettings) => {
+  const startNewGame = async (settings?: GameSettings) => {
     if (!currentUser) return;
     
     // Use provided settings or current game settings
@@ -130,11 +230,70 @@ export default function GamePage() {
     if (settings) {
       setGameSettings(settings);
     }
+
+    // Si estamos enviando una invitación, enviarla y esperar aceptación
+    if (sendingInvitation) {
+      const opponentId = currentUser.id === '1' ? '2' : '1';
+      
+      const invitation = await sendGameInvitation(
+        currentUser.id,
+        opponentId,
+        finalSettings
+      );
+      
+      if (invitation) {
+        // Volver a mostrar la pantalla de invitación esperando respuesta
+        setShowSetup(false);
+        setSendingInvitation(false);
+      }
+      return;
+    }
     
     // Get both users IDs
     const user1Id = currentUser.id;
     const user2Id = currentUser.id === '1' ? '2' : '1';
-    const newGame = createNewGame(user1Id, user2Id, finalSettings.difficulty);
+    
+    // Crear sesión en Supabase
+    const { getRandomWord: getLocalWord } = await import('@/lib/game-storage');
+    
+    const firstDrawer = Math.random() > 0.5 ? user1Id : user2Id;
+    const word = getLocalWord(finalSettings.difficulty);
+    
+    const session = await createGameSession(
+      user1Id,
+      user2Id,
+      firstDrawer,
+      word,
+      finalSettings.maxRounds,
+      finalSettings.difficulty
+    );
+    
+    if (!session) {
+      console.error('Failed to create game session');
+      toast.error('Error al crear la partida. Intenta nuevamente.');
+      return;
+    }
+    
+    setSessionId(session.id);
+    
+    // Crear estado local del juego basado en la sesión
+    const newGame: GameState = {
+      currentDrawer: session.current_drawer_id,
+      currentWord: session.word_to_guess,
+      wordToGuess: session.word_to_guess,
+      drawing: session.drawing_data || '',
+      round: session.round,
+      scores: {
+        [user1Id]: session.player1_score,
+        [user2Id]: session.player2_score,
+      },
+      guesses: [],
+      startTime: Date.now(),
+      isActive: true,
+    };
+    
+    // Iniciar countdown antes de mostrar el juego
+    setCountdown(3);
     setGameState(newGame);
     saveGameState(newGame);
     setGameOver(false);
@@ -142,18 +301,24 @@ export default function GamePage() {
     setShowSetup(false);
     setShowInvitation(false);
     setFromInvitation(false);
+    setSendingInvitation(false);
   };
 
-  const handleDrawingChange = (dataUrl: string) => {
-    if (!gameState) return;
+  const handleDrawingChange = async (dataUrl: string) => {
+    if (!gameState || !sessionId) return;
     
     const updated = { ...gameState, drawing: dataUrl };
     setGameState(updated);
     saveGameState(updated);
+    
+    // Sincronizar el dibujo con Supabase en tiempo real
+    await updateGameSession(sessionId, {
+      drawing_data: dataUrl,
+    });
   };
 
   const handleGuess = async (guess: string) => {
-    if (!gameState || !currentUser) return;
+    if (!gameState || !currentUser || !sessionId) return;
 
     const isCorrect = checkGuess(guess, gameState.wordToGuess);
     
@@ -178,6 +343,16 @@ export default function GamePage() {
       
       // Show confetti celebration
       setShowConfetti(true);
+      toast.success('¡Correcto! +' + gameSettings.pointsPerCorrect + ' puntos');
+
+      // Sincronizar scores con Supabase
+      const player1Id = Object.keys(gameState.scores)[0];
+      const player2Id = Object.keys(gameState.scores)[1];
+      
+      await updateGameSession(sessionId, {
+        player1_score: updatedScores[player1Id] || 0,
+        player2_score: updatedScores[player2Id] || 0,
+      });
 
       // Check if game is over
       if (gameState.round >= gameSettings.maxRounds) {
@@ -195,19 +370,22 @@ export default function GamePage() {
         
         setGameState(finalState);
         
-        // Get player IDs correctly
-        const player1Id = Object.keys(gameState.scores)[0];
-        const player2Id = Object.keys(gameState.scores)[1];
-        
+        const gameDuration = Math.floor((Date.now() - gameState.startTime) / 1000);
         await saveGameHistorySupabase(
           player1Id,
           player2Id,
           winner,
           updatedScores[player1Id] || 0,
           updatedScores[player2Id] || 0,
-          gameState.round,
-          gameSettings.difficulty
+          gameState.round || 1,
+          gameSettings.difficulty,
+          gameDuration
         );
+        
+        // Terminar la sesi\u00f3n en Supabase
+
+        await endGameSession(sessionId);
+        
         setGameOver(true);
         setWinner(winner);
         clearGameState();
@@ -224,6 +402,16 @@ export default function GamePage() {
         gameSettings.difficulty
       );
       
+      // Sincronizar nueva ronda con Supabase
+      await updateGameSession(sessionId, {
+        current_round: nextState.round,
+        current_drawer: nextState.currentDrawer,
+        current_word: nextState.wordToGuess,
+        drawing_data: '', // Limpiar el dibujo para la nueva ronda
+        player1_score: nextState.scores[player1Id] || 0,
+        player2_score: nextState.scores[player2Id] || 0,
+      });
+      
       setGameState(nextState);
       saveGameState(nextState);
     } else {
@@ -238,7 +426,7 @@ export default function GamePage() {
   };
 
   const handleSkip = async () => {
-    if (!gameState) return;
+    if (!gameState || !sessionId) return;
 
     // Reset streak on skip
     setStreak(0);
@@ -267,10 +455,14 @@ export default function GamePage() {
         winner,
         gameState.scores[player1Id] || 0,
         gameState.scores[player2Id] || 0,
-        gameState.round,
+        gameState.round || 1,
         gameSettings.difficulty,
         0
       );
+      
+      // Terminar la sesión en Supabase
+      await endGameSession(sessionId);
+      
       setGameOver(true);
       setWinner(winner);
       clearGameState();
@@ -282,6 +474,19 @@ export default function GamePage() {
     // Move to next round
     const users = Object.keys(gameState.scores);
     const nextState = nextRound(gameState, users, gameSettings.difficulty);
+    
+    // Sincronizar nueva ronda con Supabase
+    const player1Id = users[0];
+    const player2Id = users[1];
+    
+    await updateGameSession(sessionId, {
+      current_round: nextState.round,
+      current_drawer: nextState.currentDrawer,
+      current_word: nextState.wordToGuess,
+      drawing_data: '', // Limpiar el dibujo para la nueva ronda
+      player1_score: nextState.scores[player1Id] || 0,
+      player2_score: nextState.scores[player2Id] || 0,
+    });
     
     setGameState(nextState);
     saveGameState(nextState);
@@ -309,7 +514,7 @@ export default function GamePage() {
       opponentId, // El oponente gana
       gameState.scores[currentUser.id] || 0,
       gameState.scores[opponentId] || 0,
-      gameState.round,
+      gameState.round || 1,
       gameSettings.difficulty,
       0
     );
@@ -322,7 +527,7 @@ export default function GamePage() {
   };
 
   const handleEndGame = async () => {
-    if (!gameState || !currentUser) return;
+    if (!gameState || !currentUser || !sessionId) return;
     
     const winner = Object.entries(gameState.scores).reduce((a, b) => 
       a[1] > b[1] ? a : b
@@ -340,15 +545,21 @@ export default function GamePage() {
     const player1Id = Object.keys(gameState.scores)[0];
     const player2Id = Object.keys(gameState.scores)[1];
     
+    const gameDuration = Math.floor((Date.now() - gameState.startTime) / 1000);
     await saveGameHistorySupabase(
       player1Id,
       player2Id,
       winner,
       gameState.scores[player1Id] || 0,
       gameState.scores[player2Id] || 0,
-      gameState.round,
-      gameSettings.difficulty
+      gameState.round || 1,
+      gameSettings.difficulty,
+      gameDuration
     );
+    
+    // Terminar la sesión en Supabase
+    await endGameSession(sessionId);
+    
     setGameOver(true);
     setWinner(winner);
     clearGameState();
@@ -356,7 +567,42 @@ export default function GamePage() {
     setHistory(updatedHistory);
   };
 
+  // Función para limpiar sesiones huérfanas/abandonadas
+  const handleForceCleanup = async () => {
+    if (!currentUser) return;
+    
+    try {
+      // Terminar la sesión actual si existe
+      if (sessionId) {
+        await endGameSession(sessionId);
+      }
+      
+      // Forzar fin de todas las sesiones del usuario
+      await forceEndAllUserSessions(currentUser.id);
+      
+      // Limpiar estado local
+      clearGameState();
+      setGameState(null);
+      setSessionId(null);
+      setGameOver(false);
+      setWinner(null);
+      
+      toast.success('Partida limpiada correctamente');
+    } catch (error) {
+      console.error('Error cleaning up game:', error);
+      toast.error('Error al limpiar la partida');
+    }
+  };
+
   const isDrawer = gameState?.currentDrawer === currentUser?.id;
+  
+  // Debug log para verificar roles
+  console.log('Game Debug:', {
+    currentDrawer: gameState?.currentDrawer,
+    currentUserId: currentUser?.id,
+    isDrawer,
+    wordToGuess: gameState?.wordToGuess,
+  });
   
   // Get opponent username
   const getOpponentUsername = () => {
@@ -386,10 +632,12 @@ export default function GamePage() {
           onCancel={() => {
             setShowSetup(false);
             setFromInvitation(false);
+            setSendingInvitation(false);
             router.push('/calendar');
           }}
           initialSettings={fromInvitation ? gameSettings : undefined}
           readonly={fromInvitation}
+          isSendingInvitation={sendingInvitation}
         />
       </div>
     );
@@ -424,14 +672,14 @@ export default function GamePage() {
                       <div className="flex items-center gap-2 mb-2">
                         <Trophy className="h-4 w-4 text-yellow-500" />
                         <span className="font-semibold">
-                          Ganador: {game.winnerId === currentUser?.id ? 'Tú' : 'Oponente'}
+                          Ganador: {game.winner_id === currentUser?.id ? 'Tú' : 'Oponente'}
                         </span>
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {game.roundsPlayed} rondas jugadas
+                        {game.rounds_played} rondas jugadas
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {new Date(game.createdAt).toLocaleDateString('es-AR', {
+                        {new Date(game.created_at).toLocaleDateString('es-AR', {
                           day: 'numeric',
                           month: 'long',
                           year: 'numeric',
@@ -442,16 +690,16 @@ export default function GamePage() {
                     </div>
                     <div className="text-right">
                       <div className="text-sm">
-                        <span className={game.player1Id === currentUser?.id ? 'font-bold' : ''}>
-                          {game.player1Id === currentUser?.id ? 'Tú' : 'Oponente'}:
+                        <span className={game.player1_id === currentUser?.id ? 'font-bold' : ''}>
+                          {game.player1_id === currentUser?.id ? 'Tú' : 'Oponente'}:
                         </span>{' '}
-                        <span className="font-semibold">{game.player1Score}</span>
+                        <span className="font-semibold">{game.player1_score}</span>
                       </div>
                       <div className="text-sm">
-                        <span className={game.player2Id === currentUser?.id ? 'font-bold' : ''}>
-                          {game.player2Id === currentUser?.id ? 'Tú' : 'Oponente'}:
+                        <span className={game.player2_id === currentUser?.id ? 'font-bold' : ''}>
+                          {game.player2_id === currentUser?.id ? 'Tú' : 'Oponente'}:
                         </span>{' '}
-                        <span className="font-semibold">{game.player2Score}</span>
+                        <span className="font-semibold">{game.player2_score}</span>
                       </div>
                     </div>
                   </div>
@@ -489,7 +737,7 @@ export default function GamePage() {
           )}
 
           <div className="space-y-2">
-            <Button onClick={startNewGame} className="w-full gap-2">
+            <Button onClick={() => startNewGame()} className="w-full gap-2">
               <RefreshCw className="h-4 w-4" />
               Jugar de Nuevo
             </Button>
@@ -578,15 +826,49 @@ export default function GamePage() {
           </Card>
         )}
 
+        {/* Countdown Overlay */}
+        {countdown !== null && countdown > 0 && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+            <div className="text-center">
+              <div className="text-8xl font-bold text-white mb-4 animate-pulse">
+                {countdown}
+              </div>
+              <p className="text-2xl text-white/80">
+                {isDrawer ? '¡Prepárate para dibujar!' : '¡Prepárate para adivinar!'}
+              </p>
+              {isDrawer && gameState?.wordToGuess && (
+                <p className="text-xl text-yellow-400 mt-4">
+                  Tu palabra: <span className="font-bold">{gameState.wordToGuess}</span>
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Game Invitation */}
-        {(!gameState || !gameState.isActive) && currentUser && (
+        {(!gameState || !gameState.isActive) && currentUser && !countdown && (
           <GameInvitation
             currentUser={currentUser}
             opponentId={currentUser.id === '1' ? '2' : '1'}
             opponentUsername={getOpponentUsername()}
             isOpponentOnline={isOpponentOnline}
             onGameStart={handleGameStart}
+            onShowInvitationSetup={handleShowInvitationSetup}
           />
+        )}
+
+        {/* Button to clean stuck session */}
+        {sessionId && currentUser && (
+          <div className="text-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleForceCleanup}
+              className="text-red-600 border-red-300 hover:bg-red-50"
+            >
+              🗑️ Limpiar partida anterior
+            </Button>
+          </div>
         )}
 
         {/* Score */}
@@ -600,10 +882,10 @@ export default function GamePage() {
         )}
 
         {/* Streak Indicator */}
-        {gameState?.isActive && <StreakIndicator streak={streak} />}
+        {gameState?.isActive && !countdown && <StreakIndicator streak={streak} />}
 
         {/* Role Indicator */}
-        {gameState?.isActive && (
+        {gameState?.isActive && !countdown && (
           <Card className={`p-4 transition-all duration-300 ${
             isDrawer 
               ? 'bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950 border-purple-300' 
@@ -612,14 +894,14 @@ export default function GamePage() {
             <p className="text-center text-lg font-semibold">
               {isDrawer ? '🎨 Estás dibujando' : '🤔 Estás adivinando'}
             </p>
-            {!isDrawer && gameState && (
+            {!isDrawer && gameState?.wordToGuess && (
               <WordHint wordLength={gameState.wordToGuess.length} />
             )}
           </Card>
         )}
 
         {/* Canvas */}
-        {gameState?.isActive && (
+        {gameState?.isActive && !countdown && (
           <Card className={`p-4 transition-all duration-300 ${wrongGuessShake ? 'animate-shake' : ''}`}>
             <CanvasDraw
               onDrawingChange={handleDrawingChange}
@@ -642,7 +924,7 @@ export default function GamePage() {
         `}</style>
 
         {/* Controls */}
-        {gameState?.isActive && (
+        {gameState?.isActive && !countdown && (
           <Card className="p-4">
             <GameControls
               isDrawer={isDrawer}

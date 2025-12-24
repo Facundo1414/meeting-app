@@ -374,62 +374,6 @@ export async function saveGameSession(
   }
 }
 
-export async function getActiveGameSession(userId: string) {
-  try {
-    const { data, error } = await supabase
-      .from("game_sessions_meeting_app")
-      .select("*")
-      .or(`player1_id.eq.${userId},player2_id.eq.${userId}`)
-      .eq("is_active", true)
-      .single();
-
-    if (error && error.code !== "PGRST116") throw error; // PGRST116 is "not found"
-    return data as GameSession | null;
-  } catch (error) {
-    console.error("Error fetching game session:", error);
-    return null;
-  }
-}
-
-export async function endGameSession(sessionId: string) {
-  try {
-    const { error } = await supabase
-      .from("game_sessions_meeting_app")
-      .update({ is_active: false })
-      .eq("id", sessionId);
-
-    if (error) throw error;
-    return true;
-  } catch (error) {
-    console.error("Error ending game session:", error);
-    return false;
-  }
-}
-
-// Subscribe to game session updates in real-time
-export function subscribeToGameSession(
-  sessionId: string,
-  callback: (session: GameSession) => void
-) {
-  const channel = supabase
-    .channel(`game-session-${sessionId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "UPDATE",
-        schema: "public",
-        table: "game_sessions_meeting_app",
-        filter: `id=eq.${sessionId}`,
-      },
-      (payload) => {
-        callback(payload.new as GameSession);
-      }
-    )
-    .subscribe();
-
-  return channel;
-}
-
 // Player Stats Functions
 export async function getPlayerStats(userId: string) {
   try {
@@ -530,5 +474,147 @@ export async function updateWordStats(
     if (error) throw error;
   } catch (error) {
     console.error("Error updating word stats:", error);
+  }
+}
+
+// Game Session Real-time Functions
+export async function createGameSession(
+  player1Id: string,
+  player2Id: string,
+  drawerId: string,
+  word: string,
+  maxRounds: number,
+  difficulty: "easy" | "medium" | "hard"
+): Promise<GameSession | null> {
+  try {
+    const { data, error } = await supabase
+      .from("game_sessions_meeting_app")
+      .insert([
+        {
+          player1_id: player1Id,
+          player2_id: player2Id,
+          current_drawer: drawerId,
+          current_word: word,
+          current_round: 1,
+          player1_score: 0,
+          player2_score: 0,
+          max_rounds: maxRounds,
+          difficulty,
+          is_active: true,
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error("Error creating game session:", error);
+    return null;
+  }
+}
+
+export async function getActiveGameSession(
+  userId: string
+): Promise<GameSession | null> {
+  try {
+    const { data, error } = await supabase
+      .from("game_sessions_meeting_app")
+      .select("*")
+      .or(`player1_id.eq.${userId},player2_id.eq.${userId}`)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === "PGRST116") return null; // No rows found
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    console.error("Error getting active game session:", error);
+    return null;
+  }
+}
+
+export async function updateGameSession(
+  sessionId: string,
+  updates: {
+    drawing_data?: string;
+    player1_score?: number;
+    player2_score?: number;
+    current_round?: number;
+    current_drawer?: string;
+    current_word?: string;
+    is_active?: boolean;
+  }
+) {
+  try {
+    const { error } = await supabase
+      .from("game_sessions_meeting_app")
+      .update(updates)
+      .eq("id", sessionId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error updating game session:", error);
+    return false;
+  }
+}
+
+export function subscribeToGameSession(
+  sessionId: string,
+  callback: (session: GameSession) => void
+) {
+  const channel = supabase
+    .channel(`game-session-${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "game_sessions_meeting_app",
+        filter: `id=eq.${sessionId}`,
+      },
+      (payload) => {
+        callback(payload.new as GameSession);
+      }
+    )
+    .subscribe();
+
+  return channel;
+}
+
+export async function endGameSession(sessionId: string) {
+  try {
+    const { error } = await supabase
+      .from("game_sessions_meeting_app")
+      .update({ is_active: false })
+      .eq("id", sessionId);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error ending game session:", error);
+    return false;
+  }
+}
+
+// Force end all active sessions for a user (useful for cleanup)
+export async function forceEndAllUserSessions(userId: string) {
+  try {
+    const { error } = await supabase
+      .from("game_sessions_meeting_app")
+      .update({ is_active: false })
+      .or(`player1_id.eq.${userId},player2_id.eq.${userId}`)
+      .eq("is_active", true);
+
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error("Error force ending user sessions:", error);
+    return false;
   }
 }

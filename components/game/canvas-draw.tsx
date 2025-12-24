@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Eraser, Trash2, Palette } from 'lucide-react';
 
@@ -32,17 +32,40 @@ export function CanvasDraw({
 }: CanvasDrawProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const isDrawingRef = useRef(false);
   const [context, setContext] = useState<CanvasRenderingContext2D | null>(null);
+  const contextRef = useRef<CanvasRenderingContext2D | null>(null);
   const [currentColor, setCurrentColor] = useState('#000000');
+  const currentColorRef = useRef('#000000');
   const [brushSize, setBrushSize] = useState(5);
+  const brushSizeRef = useRef(5);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
+  const hasDrawnRef = useRef(false);
+  const onDrawingChangeRef = useRef(onDrawingChange);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    currentColorRef.current = currentColor;
+  }, [currentColor]);
+
+  useEffect(() => {
+    brushSizeRef.current = brushSize;
+  }, [brushSize]);
+
+  useEffect(() => {
+    contextRef.current = context;
+  }, [context]);
+
+  useEffect(() => {
+    onDrawingChangeRef.current = onDrawingChange;
+  }, [onDrawingChange]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
     // Set canvas size
@@ -119,7 +142,78 @@ export function CanvasDraw({
     }
   }, [initialDrawing, context]);
 
-  const startDrawing = (e: React.TouchEvent | React.MouseEvent) => {
+  // Native touch event handlers to prevent scrolling while drawing
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || disabled || readOnly) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      const ctx = contextRef.current;
+      if (!ctx || !canvas) return;
+      
+      // Clear placeholder on first draw
+      if (!hasDrawnRef.current) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        hasDrawnRef.current = true;
+        setHasDrawn(true);
+      }
+      
+      e.preventDefault();
+      isDrawingRef.current = true;
+      setIsDrawing(true);
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.touches[0].clientX - rect.left;
+      const y = e.touches[0].clientY - rect.top;
+
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const ctx = contextRef.current;
+      if (!isDrawingRef.current || !ctx || !canvas) return;
+      
+      e.preventDefault();
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.touches[0].clientX - rect.left;
+      const y = e.touches[0].clientY - rect.top;
+
+      ctx.strokeStyle = currentColorRef.current;
+      ctx.lineWidth = brushSizeRef.current;
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    };
+
+    const handleTouchEnd = () => {
+      if (!isDrawingRef.current) return;
+      
+      isDrawingRef.current = false;
+      setIsDrawing(false);
+      
+      const ctx = contextRef.current;
+      if (ctx && canvas && onDrawingChangeRef.current) {
+        ctx.closePath();
+        const dataUrl = canvas.toDataURL('image/png');
+        onDrawingChangeRef.current(dataUrl);
+      }
+    };
+
+    // Add native event listeners with passive: false to allow preventDefault
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [disabled, readOnly]);
+
+  const startDrawing = (e: React.MouseEvent) => {
     if (disabled || readOnly || !context || !canvasRef.current) return;
     
     // Clear placeholder on first draw
@@ -127,27 +221,26 @@ export function CanvasDraw({
       context.fillStyle = '#ffffff';
       context.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       setHasDrawn(true);
+      hasDrawnRef.current = true;
     }
     
-    e.preventDefault();
     setIsDrawing(true);
+    isDrawingRef.current = true;
 
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     context.beginPath();
     context.moveTo(x, y);
   };
 
-  const draw = (e: React.TouchEvent | React.MouseEvent) => {
+  const draw = (e: React.MouseEvent) => {
     if (!isDrawing || disabled || readOnly || !context || !canvasRef.current) return;
-    
-    e.preventDefault();
 
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     context.strokeStyle = currentColor;
     context.lineWidth = brushSize;
@@ -159,6 +252,7 @@ export function CanvasDraw({
     if (!isDrawing) return;
     
     setIsDrawing(false);
+    isDrawingRef.current = false;
     
     if (context && canvasRef.current && onDrawingChange) {
       context.closePath();
@@ -198,9 +292,6 @@ export function CanvasDraw({
         className={`w-full border-4 border-gray-800 dark:border-gray-400 rounded-lg touch-none bg-white shadow-lg ${
           disabled || readOnly ? 'opacity-50 cursor-not-allowed' : 'cursor-crosshair'
         }`}
-        onTouchStart={startDrawing}
-        onTouchMove={draw}
-        onTouchEnd={stopDrawing}
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={stopDrawing}
