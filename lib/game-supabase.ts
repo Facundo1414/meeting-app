@@ -240,10 +240,18 @@ export async function cancelGameInvitation(invitationId: string) {
       .update({ status: "canceled" })
       .eq("id", invitationId);
 
-    if (error) throw error;
+    if (error) {
+      console.error("Error canceling invitation:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw error;
+    }
     return true;
   } catch (error) {
-    console.error("Error canceling invitation:", error);
+    console.error("Caught error canceling invitation:", error);
     return false;
   }
 }
