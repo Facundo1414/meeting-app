@@ -201,6 +201,39 @@ export async function getMessages(): Promise<Message[]> {
   }
 }
 
+// Get all messages with media (for gallery)
+export async function getMediaMessages(): Promise<Message[]> {
+  try {
+    const { data, error } = await supabase
+      .from("messages_meeting_app")
+      .select("*")
+      .not("media_url", "is", null)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching media messages:", error);
+      return [];
+    }
+
+    return (data || []).map((msg) => ({
+      id: msg.id,
+      senderId: msg.sender_id,
+      senderUsername: msg.sender_username,
+      message: msg.message,
+      timestamp: msg.created_at,
+      readBy: msg.read_by || [],
+      mediaUrl: msg.media_url,
+      mediaType: msg.media_type,
+      reactions: msg.reactions || [],
+      replyToId: msg.reply_to_id,
+      editedAt: msg.edited_at,
+    }));
+  } catch (error) {
+    console.error("Error in getMediaMessages:", error);
+    return [];
+  }
+}
+
 // Get messages with pagination (for loading older messages)
 export async function getMessagesPaginated(
   limit: number = 50,

@@ -84,7 +84,7 @@ export function GameInvitation({
       // Invitación recibida (yo soy to_user_id)
       if (invitation.toUserId === currentUser.id && invitation.fromUserId === opponentId) {
         // Si fue cancelada o rechazada, removerla
-        if (invitation.status === 'cancelled' || invitation.status === 'rejected') {
+        if (invitation.status === 'canceled' || invitation.status === 'rejected') {
           setReceivedInvitation(null);
         } else if (invitation.status === 'pending') {
           setReceivedInvitation(invitation);
@@ -101,7 +101,7 @@ export function GameInvitation({
             pointsPerCorrect: invitation.pointsPerCorrect || 10,
             difficulty: invitation.difficulty,
           });
-        } else if (invitation.status === 'rejected' || invitation.status === 'cancelled') {
+        } else if (invitation.status === 'rejected' || invitation.status === 'canceled') {
           // Si fue rechazada o cancelada, limpiar
           setSentInvitation(null);
         } else {

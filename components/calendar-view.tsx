@@ -635,6 +635,22 @@ export function CalendarView() {
             </p>
           </CardContent>
         </Card>
+
+        {/* Botón de galería */}
+        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950">
+          <CardContent className="p-4">
+            <Button 
+              onClick={() => router.push('/gallery')}
+              className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold py-6 text-lg shadow-lg"
+              size="lg"
+            >
+              📷 Galería en Común
+            </Button>
+            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Todas las fotos y videos compartidos
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Bottom Sheet para agregar/editar eventos */}

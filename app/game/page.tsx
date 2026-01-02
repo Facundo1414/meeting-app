@@ -135,11 +135,11 @@ export default function GamePage() {
         setSessionId(session.id);
         // Cargar el estado del juego desde la sesión
         const sessionGame: GameState = {
-          currentDrawer: session.current_drawer_id,
-          currentWord: session.word_to_guess,
-          wordToGuess: session.word_to_guess,
+          currentDrawer: session.current_drawer,
+          currentWord: session.current_word,
+          wordToGuess: session.current_word,
           drawing: session.drawing_data || '',
-          round: session.round,
+          round: session.current_round,
           scores: {
             [session.player1_id]: session.player1_score,
             [session.player2_id]: session.player2_score,
@@ -164,17 +164,37 @@ export default function GamePage() {
 
     const setupSubscription = async () => {
       const channel = subscribeToGameSession(sessionId, (session) => {
+        // Detectar si el juego terminó
+        if (!session.is_active && gameState?.isActive) {
+          // El juego acaba de terminar
+          console.log('Game ended via subscription');
+          
+          const winner = session.player1_score > session.player2_score 
+            ? session.player1_id 
+            : session.player2_id;
+          
+          setGameOver(true);
+          setWinner(winner);
+          setGameState(null);
+          setSessionId(null);
+          clearGameState();
+          
+          // Reload history
+          getGameHistory(currentUser.id).then(setHistory);
+          return;
+        }
+        
         // Actualizar el estado del juego con los datos de la sesión
         setGameState(prev => {
           if (!prev) return null;
           
           return {
             ...prev,
-            currentDrawer: session.current_drawer_id,
-            currentWord: session.word_to_guess,
-            wordToGuess: session.word_to_guess,
+            currentDrawer: session.current_drawer,
+            currentWord: session.current_word,
+            wordToGuess: session.current_word,
             drawing: session.drawing_data || '',
-            round: session.round,
+            round: session.current_round,
             scores: {
               [session.player1_id]: session.player1_score,
               [session.player2_id]: session.player2_score,
@@ -193,7 +213,7 @@ export default function GamePage() {
     return () => {
       cleanup.then(fn => fn && fn());
     };
-  }, [sessionId, currentUser]);
+  }, [sessionId, currentUser, gameState?.isActive]);
 
   // Countdown effect
   useEffect(() => {
@@ -253,7 +273,43 @@ export default function GamePage() {
     const user1Id = currentUser.id;
     const user2Id = currentUser.id === '1' ? '2' : '1';
     
-    // Crear sesión en Supabase
+    // IMPORTANTE: Verificar si ya existe una sesión activa
+    // Esto evita que ambos jugadores creen sesiones duplicadas
+    const existingSession = await getActiveGameSession(currentUser.id);
+    
+    if (existingSession) {
+      // Ya existe una sesión, cargarla en vez de crear una nueva
+      console.log('Loading existing session:', existingSession.id);
+      setSessionId(existingSession.id);
+      
+      const sessionGame: GameState = {
+        currentDrawer: existingSession.current_drawer,
+        currentWord: existingSession.current_word,
+        wordToGuess: existingSession.current_word,
+        drawing: existingSession.drawing_data || '',
+        round: existingSession.current_round,
+        scores: {
+          [existingSession.player1_id]: existingSession.player1_score,
+          [existingSession.player2_id]: existingSession.player2_score,
+        },
+        guesses: [],
+        startTime: Date.now(),
+        isActive: existingSession.is_active,
+      };
+      
+      setCountdown(3);
+      setGameState(sessionGame);
+      saveGameState(sessionGame);
+      setGameOver(false);
+      setWinner(null);
+      setShowSetup(false);
+      setShowInvitation(false);
+      setFromInvitation(false);
+      setSendingInvitation(false);
+      return;
+    }
+    
+    // Crear sesión en Supabase (solo si no existe una)
     const { getRandomWord: getLocalWord } = await import('@/lib/game-storage');
     
     const firstDrawer = Math.random() > 0.5 ? user1Id : user2Id;
@@ -274,15 +330,16 @@ export default function GamePage() {
       return;
     }
     
+    console.log('Created new session:', session.id);
     setSessionId(session.id);
     
     // Crear estado local del juego basado en la sesión
     const newGame: GameState = {
-      currentDrawer: session.current_drawer_id,
-      currentWord: session.word_to_guess,
-      wordToGuess: session.word_to_guess,
+      currentDrawer: session.current_drawer,
+      currentWord: session.current_word,
+      wordToGuess: session.current_word,
       drawing: session.drawing_data || '',
-      round: session.round,
+      round: session.current_round,
       scores: {
         [user1Id]: session.player1_score,
         [user2Id]: session.player2_score,
@@ -382,15 +439,15 @@ export default function GamePage() {
           gameDuration
         );
         
-        // Terminar la sesi\u00f3n en Supabase
-
-        await endGameSession(sessionId);
+        // Terminar la sesión en Supabase - esto dispara subscription para ambos
+        await updateGameSession(sessionId, {
+          is_active: false,
+          player1_score: updatedScores[player1Id] || 0,
+          player2_score: updatedScores[player2Id] || 0,
+        });
         
-        setGameOver(true);
-        setWinner(winner);
-        clearGameState();
-        const updatedHistory = await getGameHistory(currentUser.id);
-        setHistory(updatedHistory);
+        // La subscription se encarga de mostrar game over
+        return;
         return;
       }
 
@@ -460,14 +517,14 @@ export default function GamePage() {
         0
       );
       
-      // Terminar la sesión en Supabase
-      await endGameSession(sessionId);
+      // Terminar la sesión en Supabase - dispara subscription
+      await updateGameSession(sessionId, {
+        is_active: false,
+        player1_score: gameState.scores[player1Id] || 0,
+        player2_score: gameState.scores[player2Id] || 0,
+      });
       
-      setGameOver(true);
-      setWinner(winner);
-      clearGameState();
-      const updatedHistory = await getGameHistory(currentUser?.id || '');
-      setHistory(updatedHistory);
+      // La subscription se encarga de game over
       return;
     }
 
@@ -557,14 +614,14 @@ export default function GamePage() {
       gameDuration
     );
     
-    // Terminar la sesión en Supabase
-    await endGameSession(sessionId);
+    // Terminar la sesión en Supabase - dispara subscription
+    await updateGameSession(sessionId, {
+      is_active: false,
+      player1_score: gameState.scores[player1Id] || 0,
+      player2_score: gameState.scores[player2Id] || 0,
+    });
     
-    setGameOver(true);
-    setWinner(winner);
-    clearGameState();
-    const updatedHistory = await getGameHistory(currentUser.id);
-    setHistory(updatedHistory);
+    // La subscription se encarga de game over
   };
 
   // Función para limpiar sesiones huérfanas/abandonadas

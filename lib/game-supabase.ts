@@ -18,7 +18,7 @@ export interface GameInvitation {
   id: string;
   from_user_id: string;
   to_user_id: string;
-  status: "pending" | "accepted" | "rejected" | "expired" | "cancelled";
+  status: "pending" | "accepted" | "rejected" | "expired" | "canceled";
   max_rounds: number;
   round_time: number;
   points_per_correct: number;
@@ -39,13 +39,15 @@ export interface GameSession {
   id: string;
   player1_id: string;
   player2_id: string;
-  current_drawer_id: string;
-  word_to_guess: string;
+  current_drawer: string;
+  current_word: string;
   drawing_data?: string;
-  round: number;
+  current_round: number;
   player1_score: number;
   player2_score: number;
   max_rounds: number;
+  round_time: number;
+  points_per_correct: number;
   difficulty: "easy" | "medium" | "hard";
   is_active: boolean;
   created_at: string;
@@ -235,7 +237,7 @@ export async function cancelGameInvitation(invitationId: string) {
   try {
     const { error } = await supabase
       .from("game_invitations_meeting_app")
-      .update({ status: "cancelled" })
+      .update({ status: "canceled" })
       .eq("id", invitationId);
 
     if (error) throw error;
@@ -297,9 +299,9 @@ export function subscribeToInvitations(
         table: "game_invitations_meeting_app",
       },
       (payload) => {
-        // Enviar invitación con status cancelled para indicar eliminación
+        // Enviar invitación con status canceled para indicar eliminación
         if (payload.old) {
-          callback({ ...mapInvitation(payload.old), status: "cancelled" });
+          callback({ ...mapInvitation(payload.old), status: "canceled" });
         }
       }
     )
@@ -523,14 +525,11 @@ export async function getActiveGameSession(
       .select("*")
       .or(`player1_id.eq.${userId},player2_id.eq.${userId}`)
       .eq("is_active", true)
-      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      if (error.code === "PGRST116") return null; // No rows found
-      throw error;
-    }
+    if (error) throw error;
     return data;
   } catch (error) {
     console.error("Error getting active game session:", error);
