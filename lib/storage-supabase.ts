@@ -570,17 +570,29 @@ async function uploadFileInChunks(
       const fileExt = file.name.split(".").pop() || "bin";
       const chunkFileName = `${userId}/chunks/${fileId}_chunk_${i}.${fileExt}`;
 
-      console.log(`Uploading chunk ${i + 1}/${totalChunks}...`);
+      console.log(`Uploading chunk ${i + 1}/${totalChunks}...`, {
+        chunkSize: chunk.size,
+        chunkType: chunk.type,
+        fileName: chunkFileName,
+      });
+
+      // Create a proper Blob with the correct MIME type
+      const chunkBlob = new Blob([chunk], { type: file.type });
 
       const { error: uploadError } = await supabase.storage
         .from("meeting-app-media")
-        .upload(chunkFileName, chunk, {
+        .upload(chunkFileName, chunkBlob, {
           cacheControl: "3600",
           upsert: false,
+          contentType: file.type,
         });
 
       if (uploadError) {
         console.error(`Error uploading chunk ${i}:`, uploadError);
+        console.error("Upload error details:", {
+          message: uploadError.message,
+          statusCode: uploadError.statusCode,
+        });
         // Clean up already uploaded chunks
         for (let j = 0; j < i; j++) {
           const cleanupFileName = `${userId}/chunks/${fileId}_chunk_${j}.${fileExt}`;
