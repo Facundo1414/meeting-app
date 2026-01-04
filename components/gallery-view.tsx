@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getMediaMessages, Message } from '@/lib/storage-supabase';
+import { getMediaMessages, Message, uploadMedia, sendMessage } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 export function GalleryView() {
   const router = useRouter();
@@ -16,8 +17,13 @@ export function GalleryView() {
   const [visibleItems, setVisibleItems] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [showUploadMenu, setShowUploadMenu] = useState(false);
   const itemsPerPage = 12;
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Callback para observar elementos
   const observeElement = useCallback((element: Element | null) => {
@@ -130,6 +136,96 @@ export function GalleryView() {
     }, 300);
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Check if it's an image or video
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      toast.error('Solo se permiten imágenes y videos');
+      return;
+    }
+    
+    // Check file size (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error('El archivo es muy grande. Máximo 50MB');
+      return;
+    }
+    
+    setSelectedFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    setShowUploadMenu(false);
+  };
+
+  const removeSelectedFile = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      toast.error('Debes iniciar sesión');
+      return;
+    }
+    
+    const user = JSON.parse(userData);
+    setUploading(true);
+
+    try {
+      const mediaType = selectedFile.type.startsWith('image/') ? 'image' : 'video';
+      const mediaUrl = await uploadMedia(selectedFile, mediaType);
+      
+      if (!mediaUrl) {
+        toast.error('Error al subir el archivo');
+        setUploading(false);
+        return;
+      }
+
+      // Send message with media
+      await sendMessage(user.id, user.username, '', mediaUrl, mediaType);
+      
+      toast.success('Archivo subido exitosamente');
+      removeSelectedFile();
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast.error('Error al subir el archivo');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCameraCapture = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+    setShowUploadMenu(false);
+  };
+
+  const handleGallerySelect = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.removeAttribute('capture');
+      fileInputRef.current.click();
+      setTimeout(() => {
+        if (fileInputRef.current) {
+          fileInputRef.current.setAttribute('capture', 'environment');
+        }
+      }, 100);
+    }
+    setShowUploadMenu(false);
+  };
+
   const stats = {
     images: items.filter(m => m.mediaType === 'image').length,
     videos: items.filter(m => m.mediaType === 'video').length,
@@ -140,6 +236,19 @@ export function GalleryView() {
   useEffect(() => {
     setPage(1);
   }, [filterType]);
+
+  // Cerrar menú al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (showUploadMenu && !target.closest('.relative')) {
+        setShowUploadMenu(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showUploadMenu]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -390,6 +499,101 @@ export function GalleryView() {
               <p className="text-white text-center">{selected.message}</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Input oculto para archivos */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        capture="environment"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
+      {/* Vista previa del archivo seleccionado */}
+      {selectedFile && previewUrl && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Vista previa</h3>
+              <button
+                onClick={removeSelectedFile}
+                disabled={uploading}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              {selectedFile.type.startsWith('image/') ? (
+                <img src={previewUrl} alt="Preview" className="w-full rounded-lg" />
+              ) : (
+                <video src={previewUrl} className="w-full rounded-lg" controls />
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={removeSelectedFile}
+                variant="outline"
+                disabled={uploading}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleUpload}
+                disabled={uploading}
+                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
+              >
+                {uploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Subiendo...
+                  </>
+                ) : (
+                  'Subir'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Botón flotante para subir archivos */}
+      {!selectedFile && !selected && (
+        <div className="fixed bottom-6 right-6 z-30">
+          <div className="relative">
+            {/* Menú desplegable */}
+            {showUploadMenu && (
+              <div className="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-[180px]">
+                <button
+                  onClick={handleCameraCapture}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md dark:text-gray-200"
+                >
+                  📷 <span>Cámara</span>
+                </button>
+                <button
+                  onClick={handleGallerySelect}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md dark:text-gray-200"
+                >
+                  📎 <span>Galería</span>
+                </button>
+              </div>
+            )}
+            
+            {/* Botón principal */}
+            <button
+              onClick={() => setShowUploadMenu(!showUploadMenu)}
+              className="w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-110"
+              title="Subir foto o video"
+            >
+              ➕
+            </button>
+          </div>
         </div>
       )}
     </div>
