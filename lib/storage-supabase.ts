@@ -605,6 +605,25 @@ async function uploadFileInChunks(
 
       if (dbError) {
         console.error(`Error saving chunk metadata ${i}:`, dbError);
+        console.error("DB Error details:", JSON.stringify(dbError, null, 2));
+
+        // Si la tabla no existe, mostrar mensaje específico
+        if (
+          dbError.message?.includes("relation") ||
+          dbError.message?.includes("does not exist")
+        ) {
+          console.error(
+            "⚠️ La tabla file_chunks_meeting_app no existe. Por favor ejecuta el script SQL: sql/create-chunks-table.sql"
+          );
+        }
+
+        // Limpiar chunks ya subidos
+        for (let j = 0; j <= i; j++) {
+          const cleanupFileName = `${userId}/chunks/${fileId}_chunk_${j}.${fileExt}`;
+          await supabase.storage
+            .from("meeting-app-media")
+            .remove([cleanupFileName]);
+        }
         return null;
       }
     }

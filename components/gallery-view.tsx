@@ -160,16 +160,30 @@ export function GalleryView() {
     
     setSelectedFile(file);
     
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    // Create preview - use createObjectURL for better performance with large files
+    if (file.type.startsWith('video/')) {
+      // Para videos, usar createObjectURL es más eficiente
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+    } else {
+      // Para imágenes, usar readAsDataURL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.onerror = () => {
+        toast.error('Error al cargar vista previa');
+      };
+      reader.readAsDataURL(file);
+    }
     setShowUploadMenu(false);
   };
 
   const removeSelectedFile = () => {
+    // Cleanup object URL if it exists
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
     setSelectedFile(null);
     setPreviewUrl(null);
     if (fileInputRef.current) {
@@ -191,22 +205,39 @@ export function GalleryView() {
 
     try {
       const mediaType = selectedFile.type.startsWith('image/') ? 'image' : 'video';
+      console.log('Starting upload process:', {
+        fileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        mediaType,
+        userId: user.id
+      });
+      
       const mediaUrl = await uploadMedia(selectedFile, user.id);
       
       if (!mediaUrl) {
-        toast.error('Error al subir el archivo');
+        console.error('Upload failed: mediaUrl is null');
+        toast.error('Error al subir el archivo. Revisa la consola para más detalles.');
         setUploading(false);
         return;
       }
 
+      console.log('Upload successful, mediaUrl:', mediaUrl);
+
       // Send message with media
-      await sendMessage(user.id, user.username, '', mediaUrl, mediaType);
+      const sent = await sendMessage(user.id, user.username, '', mediaUrl, mediaType);
+      
+      if (!sent) {
+        console.error('Failed to send message with media');
+        toast.error('Archivo subido pero falló al crear el mensaje');
+        setUploading(false);
+        return;
+      }
       
       toast.success('Archivo subido exitosamente');
       removeSelectedFile();
     } catch (error) {
       console.error('Error uploading file:', error);
-      toast.error('Error al subir el archivo');
+      toast.error(`Error al subir el archivo: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     } finally {
       setUploading(false);
     }
