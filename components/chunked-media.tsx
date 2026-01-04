@@ -3,7 +3,7 @@
 import { useChunkedMedia } from '@/hooks/use-chunked-media';
 
 interface ChunkedImageProps {
-  src: string;
+  src?: string;
   alt: string;
   className?: string;
   onClick?: () => void;
@@ -20,6 +20,14 @@ export function ChunkedImage({
   loading = 'lazy' 
 }: ChunkedImageProps) {
   const { blobUrl, loading: isLoading, error } = useChunkedMedia(src);
+
+  if (!src) {
+    return (
+      <div className={`flex items-center justify-center bg-gray-200 dark:bg-gray-700 ${className}`}>
+        <span className="text-sm text-gray-500">Sin imagen</span>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -50,7 +58,7 @@ export function ChunkedImage({
 }
 
 interface ChunkedVideoProps {
-  src: string;
+  src?: string;
   className?: string;
   controls?: boolean;
   autoPlay?: boolean;
@@ -71,6 +79,14 @@ export function ChunkedVideo({
   onClick
 }: ChunkedVideoProps) {
   const { blobUrl, loading, error } = useChunkedMedia(src);
+
+  if (!src) {
+    return (
+      <div className={`flex items-center justify-center bg-black ${className}`}>
+        <span className="text-sm text-white">Sin video</span>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -103,7 +119,7 @@ export function ChunkedVideo({
 }
 
 interface ChunkedAudioProps {
-  src: string;
+  src?: string;
   className?: string;
   controls?: boolean;
   autoPlay?: boolean;
@@ -116,6 +132,14 @@ export function ChunkedAudio({
   autoPlay = false 
 }: ChunkedAudioProps) {
   const { blobUrl, loading, error } = useChunkedMedia(src);
+
+  if (!src) {
+    return (
+      <div className={`${className} p-2 bg-gray-100 dark:bg-gray-800 rounded`}>
+        <span className="text-sm text-gray-500">Sin audio</span>
+      </div>
+    );
+  }
 
   if (error) {
     return (
