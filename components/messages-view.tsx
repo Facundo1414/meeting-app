@@ -639,10 +639,15 @@ export function MessagesView() {
       return;
     }
     
-    // Check file size (max 50MB)
-    if (file.size > 50 * 1024 * 1024) {
-      alert('El archivo es muy grande. Máximo 50MB');
+    // Check file size (max 500MB - will be chunked if > 50MB)
+    if (file.size > 500 * 1024 * 1024) {
+      alert('El archivo es muy grande. Máximo 500MB');
       return;
+    }
+    
+    // Inform user if file will be chunked
+    if (file.size > 50 * 1024 * 1024) {
+      toast.info('Archivo grande detectado. Se subirá en fragmentos.');
     }
     
     setSelectedFile(file);

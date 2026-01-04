@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { ChunkedImage, ChunkedVideo, ChunkedAudio } from '@/components/chunked-media';
 
 export function GalleryView() {
   const router = useRouter();
@@ -146,10 +147,15 @@ export function GalleryView() {
       return;
     }
     
-    // Check file size (max 50MB)
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('El archivo es muy grande. Máximo 50MB');
+    // Check file size (max 500MB - will be chunked if > 50MB)
+    if (file.size > 500 * 1024 * 1024) {
+      toast.error('El archivo es muy grande. Máximo 500MB');
       return;
+    }
+    
+    // Inform user if file will be chunked
+    if (file.size > 50 * 1024 * 1024) {
+      toast.info('Archivo grande detectado. Se subirá en fragmentos.');
     }
     
     setSelectedFile(file);
@@ -361,7 +367,7 @@ export function GalleryView() {
                   {it.mediaType === 'image' ? (
                     <div className="relative w-full h-28 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
                       {isVisible ? (
-                        <img
+                        <ChunkedImage
                           src={it.mediaUrl}
                           alt={`Foto ${it.id}`}
                           className="w-full h-full object-cover cursor-pointer transition-opacity duration-200 hover:opacity-80"
@@ -382,7 +388,7 @@ export function GalleryView() {
                     >
                       {isVisible ? (
                         <>
-                          <video
+                          <ChunkedVideo
                             src={it.mediaUrl}
                             className="w-full h-full object-cover"
                             muted
@@ -470,13 +476,13 @@ export function GalleryView() {
           {/* Contenido */}
           <div className="flex-1 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
             {selected.mediaType === 'image' ? (
-              <img 
+              <ChunkedImage 
                 src={selected.mediaUrl} 
                 alt="Selected" 
                 className="max-w-full max-h-full object-contain" 
               />
             ) : selected.mediaType === 'video' ? (
-              <video 
+              <ChunkedVideo 
                 src={selected.mediaUrl} 
                 controls 
                 autoPlay
@@ -488,7 +494,7 @@ export function GalleryView() {
                   <span className="text-5xl">🎤</span>
                   <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">Mensaje de audio</p>
                 </div>
-                <audio src={selected.mediaUrl} controls className="w-full" autoPlay />
+                <ChunkedAudio src={selected.mediaUrl} controls className="w-full" autoPlay />
               </div>
             ) : null}
           </div>

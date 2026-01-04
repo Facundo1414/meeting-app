@@ -542,6 +542,162 @@ export async function compressImage(
   });
 }
 
+// Constants for chunking
+const CHUNK_SIZE = 40 * 1024 * 1024; // 40MB chunks (below 50MB limit)
+const MAX_FILE_SIZE_WITHOUT_CHUNKING = 50 * 1024 * 1024; // 50MB
+
+// Upload file in chunks for large files
+async function uploadFileInChunks(
+  file: File,
+  userId: string
+): Promise<string | null> {
+  try {
+    const fileId = `${userId}_${Date.now()}`;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+    console.log(`Uploading large file in ${totalChunks} chunks:`, {
+      fileName: file.name,
+      fileSize: file.size,
+      chunkSize: CHUNK_SIZE,
+    });
+
+    // Upload each chunk
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+
+      const fileExt = file.name.split(".").pop() || "bin";
+      const chunkFileName = `${userId}/chunks/${fileId}_chunk_${i}.${fileExt}`;
+
+      console.log(`Uploading chunk ${i + 1}/${totalChunks}...`);
+
+      const { error: uploadError } = await supabase.storage
+        .from("meeting-app-media")
+        .upload(chunkFileName, chunk, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error(`Error uploading chunk ${i}:`, uploadError);
+        // Clean up already uploaded chunks
+        for (let j = 0; j < i; j++) {
+          const cleanupFileName = `${userId}/chunks/${fileId}_chunk_${j}.${fileExt}`;
+          await supabase.storage
+            .from("meeting-app-media")
+            .remove([cleanupFileName]);
+        }
+        return null;
+      }
+
+      // Save chunk metadata to database
+      const { error: dbError } = await supabase
+        .from("file_chunks_meeting_app")
+        .insert({
+          file_id: fileId,
+          chunk_index: i,
+          chunk_path: chunkFileName,
+          total_chunks: totalChunks,
+          file_name: file.name,
+          file_type: file.type,
+        });
+
+      if (dbError) {
+        console.error(`Error saving chunk metadata ${i}:`, dbError);
+        return null;
+      }
+    }
+
+    console.log(`All ${totalChunks} chunks uploaded successfully`);
+
+    // Return a special URL format that indicates this is a chunked file
+    return `chunked://${fileId}`;
+  } catch (error) {
+    console.error("Error in uploadFileInChunks:", error);
+    return null;
+  }
+}
+
+// Download and reassemble chunked file
+export async function downloadChunkedFile(
+  fileId: string
+): Promise<Blob | null> {
+  try {
+    // Get chunk metadata from database
+    const { data: chunks, error: dbError } = await supabase
+      .from("file_chunks_meeting_app")
+      .select("*")
+      .eq("file_id", fileId)
+      .order("chunk_index", { ascending: true });
+
+    if (dbError || !chunks || chunks.length === 0) {
+      console.error("Error fetching chunk metadata:", dbError);
+      return null;
+    }
+
+    console.log(`Downloading ${chunks.length} chunks for file ${fileId}...`);
+
+    // Download all chunks
+    const chunkBlobs: Blob[] = [];
+    for (const chunkMeta of chunks) {
+      const { data: chunkData, error: downloadError } = await supabase.storage
+        .from("meeting-app-media")
+        .download(chunkMeta.chunk_path);
+
+      if (downloadError || !chunkData) {
+        console.error(
+          `Error downloading chunk ${chunkMeta.chunk_index}:`,
+          downloadError
+        );
+        return null;
+      }
+
+      chunkBlobs.push(chunkData);
+    }
+
+    // Combine all chunks into a single blob
+    const completeBlob = new Blob(chunkBlobs, { type: chunks[0].file_type });
+    console.log(
+      `File reassembled successfully. Total size: ${completeBlob.size} bytes`
+    );
+
+    return completeBlob;
+  } catch (error) {
+    console.error("Error in downloadChunkedFile:", error);
+    return null;
+  }
+}
+
+// Get chunked file info
+export async function getChunkedFileInfo(fileId: string): Promise<{
+  fileName: string;
+  fileType: string;
+  totalSize: number;
+} | null> {
+  try {
+    const { data: chunks, error } = await supabase
+      .from("file_chunks_meeting_app")
+      .select("file_name, file_type")
+      .eq("file_id", fileId)
+      .limit(1)
+      .single();
+
+    if (error || !chunks) {
+      return null;
+    }
+
+    return {
+      fileName: chunks.file_name,
+      fileType: chunks.file_type,
+      totalSize: 0, // We could calculate this by counting chunks * CHUNK_SIZE
+    };
+  } catch (error) {
+    console.error("Error in getChunkedFileInfo:", error);
+    return null;
+  }
+}
+
 // Upload file to Supabase Storage
 export async function uploadMedia(
   file: File,
@@ -555,9 +711,12 @@ export async function uploadMedia(
       userId,
     });
 
-    // Compress only if it's an image
+    // Compress only if it's an image and not too large
     let fileToUpload = file;
-    if (file.type.startsWith("image/")) {
+    if (
+      file.type.startsWith("image/") &&
+      file.size < MAX_FILE_SIZE_WITHOUT_CHUNKING
+    ) {
       fileToUpload = await compressImage(file);
       console.log("Image compressed:", {
         originalSize: file.size,
@@ -565,6 +724,13 @@ export async function uploadMedia(
       });
     }
 
+    // Check if file needs to be chunked
+    if (fileToUpload.size > MAX_FILE_SIZE_WITHOUT_CHUNKING) {
+      console.log("File is too large, using chunked upload");
+      return await uploadFileInChunks(fileToUpload, userId);
+    }
+
+    // Normal upload for files under 50MB
     // Get proper file extension from file name or mime type
     let fileExt = file.name.split(".").pop();
 
