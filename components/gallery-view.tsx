@@ -191,7 +191,7 @@ export function GalleryView() {
 
     try {
       const mediaType = selectedFile.type.startsWith('image/') ? 'image' : 'video';
-      const mediaUrl = await uploadMedia(selectedFile, mediaType);
+      const mediaUrl = await uploadMedia(selectedFile, user.id);
       
       if (!mediaUrl) {
         toast.error('Error al subir el archivo');
