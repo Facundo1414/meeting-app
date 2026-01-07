@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { ChunkedImage, ChunkedVideo, ChunkedAudio } from '@/components/chunked-media';
+import { ThumbnailImage } from '@/components/thumbnail-image';
+import { CacheClearButton } from '@/components/cache-clear-button';
+import { BandwidthStatsDisplay } from '@/hooks/use-bandwidth-stats';
 
 export function GalleryView() {
   const router = useRouter();
@@ -22,6 +25,7 @@ export function GalleryView() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const itemsPerPage = 12;
   const observerRef = useRef<IntersectionObserver | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -309,7 +313,33 @@ export function GalleryView() {
                 </p>
               </div>
             </div>
+            
+            {/* Botón de configuración */}
+            <button
+              onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+              className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 text-xl"
+              aria-label="Configuración"
+            >
+              ⚙️
+            </button>
           </div>
+          
+          {/* Menú de configuración desplegable */}
+          {showSettingsMenu && (
+            <div className="mb-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border dark:border-gray-700 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">📊 Estadísticas de Uso</h3>
+                <BandwidthStatsDisplay />
+              </div>
+              
+              <hr className="dark:border-gray-700" />
+              
+              <div>
+                <h3 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">🗄️ Gestión de Caché</h3>
+                <CacheClearButton />
+              </div>
+            </div>
+          )}
 
           {/* Filtros */}
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -396,19 +426,18 @@ export function GalleryView() {
                   ref={observeElement}
                 >
                   {it.mediaType === 'image' ? (
-                    <div className="relative w-full h-28 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
+                    <div className="relative w-full h-28 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer">
                       {isVisible ? (
-                        <ChunkedImage
+                        <ThumbnailImage
                           src={it.mediaUrl}
                           alt={`Foto ${it.id}`}
-                          className="w-full h-full object-cover cursor-pointer transition-opacity duration-200 hover:opacity-80"
-                          loading="lazy"
+                          className="w-full h-full"
                           onClick={() => setSelected(it)}
                           onLoad={() => handleImageLoad(it.id)}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <div className="w-6 h-6 border-2 border-gray-300 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+                          <span className="text-2xl">📷</span>
                         </div>
                       )}
                     </div>
@@ -419,22 +448,18 @@ export function GalleryView() {
                     >
                       {isVisible ? (
                         <>
-                          <ChunkedVideo
-                            src={it.mediaUrl}
-                            className="w-full h-full object-cover"
-                            muted
-                            playsInline
-                            preload="metadata"
-                          />
+                          <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                            <span className="text-4xl">🎥</span>
+                          </div>
                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <div className="w-10 h-10 bg-black/50 rounded-full flex items-center justify-center">
+                            <div className="w-10 h-10 bg-black/70 rounded-full flex items-center justify-center">
                               <span className="text-white text-xl">▶</span>
                             </div>
                           </div>
                         </>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <div className="w-6 h-6 border-2 border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+                          <span className="text-2xl">🎥</span>
                         </div>
                       )}
                     </div>

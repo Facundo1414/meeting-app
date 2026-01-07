@@ -591,7 +591,6 @@ async function uploadFileInChunks(
         console.error(`Error uploading chunk ${i}:`, uploadError);
         console.error("Upload error details:", {
           message: uploadError.message,
-          statusCode: uploadError.statusCode,
         });
         // Clean up already uploaded chunks
         for (let j = 0; j < i; j++) {
