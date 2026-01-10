@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { ChunkedImage, ChunkedVideo, ChunkedAudio } from '@/components/chunked-media';
 import { ThumbnailImage } from '@/components/thumbnail-image';
+import { VideoThumbnail } from '@/components/video-thumbnail';
 import { CacheClearButton } from '@/components/cache-clear-button';
 import { BandwidthStatsDisplay } from '@/hooks/use-bandwidth-stats';
 
@@ -447,16 +448,11 @@ export function GalleryView() {
                       onClick={() => setSelected(it)}
                     >
                       {isVisible ? (
-                        <>
-                          <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                            <span className="text-4xl">🎥</span>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <div className="w-10 h-10 bg-black/70 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xl">▶</span>
-                            </div>
-                          </div>
-                        </>
+                        <VideoThumbnail
+                          src={it.mediaUrl}
+                          alt={`Video ${it.id}`}
+                          className="w-full h-full"
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <span className="text-2xl">🎥</span>
