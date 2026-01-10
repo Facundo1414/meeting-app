@@ -98,14 +98,9 @@ export function useChunkedMedia(
   useEffect(() => {
     if (!mediaUrl || !autoLoad) return;
 
-    // Si no es un archivo fragmentado, devolver la URL directamente
-    if (!mediaUrl.startsWith("chunked://")) {
-      setBlobUrl(mediaUrl);
-      return;
-    }
-
-    // Extraer el file ID
-    const fileId = mediaUrl.replace("chunked://", "");
+    // Determinar si es chunked o URL normal
+    const isChunked = mediaUrl.startsWith("chunked://");
+    const fileId = isChunked ? mediaUrl.replace("chunked://", "") : mediaUrl;
 
     // Check memory cache first
     if (memoryCache.has(fileId)) {
@@ -126,14 +121,26 @@ export function useChunkedMedia(
 
         let blob: Blob | null;
         if (cachedBlob) {
-          console.log(`Using cached file: ${fileId}`);
+          console.log(`✅ Using cached file: ${isChunked ? fileId : 'URL'}`);
           blob = cachedBlob;
         } else {
-          console.log(`Downloading file: ${fileId}`);
-          blob = await downloadChunkedFile(fileId);
+          if (isChunked) {
+            // Archivo fragmentado - descargar y ensamblar chunks
+            console.log(`⬇️ Downloading chunked file: ${fileId}`);
+            blob = await downloadChunkedFile(fileId);
+          } else {
+            // URL normal - descargar directamente
+            console.log(`⬇️ Downloading file from URL: ${mediaUrl}`);
+            const response = await fetch(mediaUrl);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            blob = await response.blob();
+          }
 
           if (blob) {
             // Cache the blob for future use
+            console.log(`💾 Caching file: ${isChunked ? fileId : 'URL'} (${Math.round(blob.size / 1024)} KB)`);
             await setCachedBlob(fileId, blob);
           }
         }
@@ -150,7 +157,7 @@ export function useChunkedMedia(
         // Store in memory cache
         memoryCache.set(fileId, url);
       } catch (err) {
-        console.error("Error loading chunked file:", err);
+        console.error("Error loading file:", err);
         setError("Error al cargar el archivo");
       } finally {
         setLoading(false);
@@ -169,9 +176,10 @@ export function useChunkedMedia(
 
   // Función para cargar manualmente (útil cuando autoLoad es false)
   const load = async () => {
-    if (!mediaUrl || !mediaUrl.startsWith("chunked://")) return;
+    if (!mediaUrl) return;
 
-    const fileId = mediaUrl.replace("chunked://", "");
+    const isChunked = mediaUrl.startsWith("chunked://");
+    const fileId = isChunked ? mediaUrl.replace("chunked://", "") : mediaUrl;
 
     if (memoryCache.has(fileId)) {
       setBlobUrl(memoryCache.get(fileId)!);
@@ -188,7 +196,16 @@ export function useChunkedMedia(
       if (cachedBlob) {
         blob = cachedBlob;
       } else {
-        blob = await downloadChunkedFile(fileId);
+        if (isChunked) {
+          blob = await downloadChunkedFile(fileId);
+        } else {
+          const response = await fetch(mediaUrl);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          blob = await response.blob();
+        }
+        
         if (blob) {
           await setCachedBlob(fileId, blob);
         }
