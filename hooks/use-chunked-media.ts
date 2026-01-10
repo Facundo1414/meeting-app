@@ -121,7 +121,7 @@ export function useChunkedMedia(
 
         let blob: Blob | null;
         if (cachedBlob) {
-          console.log(`✅ Using cached file: ${isChunked ? fileId : 'URL'}`);
+          console.log(`✅ Using cached file: ${isChunked ? fileId : "URL"}`);
           blob = cachedBlob;
         } else {
           if (isChunked) {
@@ -140,7 +140,9 @@ export function useChunkedMedia(
 
           if (blob) {
             // Cache the blob for future use
-            console.log(`💾 Caching file: ${isChunked ? fileId : 'URL'} (${Math.round(blob.size / 1024)} KB)`);
+            console.log(
+              `💾 Caching file: ${isChunked ? fileId : "URL"} (${Math.round(blob.size / 1024)} KB)`
+            );
             await setCachedBlob(fileId, blob);
           }
         }
@@ -205,7 +207,7 @@ export function useChunkedMedia(
           }
           blob = await response.blob();
         }
-        
+
         if (blob) {
           await setCachedBlob(fileId, blob);
         }
