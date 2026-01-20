@@ -132,7 +132,7 @@ export function useChunkedMedia(
         // Check IndexedDB cache first (solo para chunked)
         const cachedBlob = await getCachedBlob(fileId);
 
-        let blob: Blob;
+        let blob: Blob | null;
         if (cachedBlob) {
           console.log(`✅ Using cached chunked file: ${fileId}`);
           blob = cachedBlob;
@@ -203,7 +203,7 @@ export function useChunkedMedia(
 
     try {
       const cachedBlob = await getCachedBlob(fileId);
-      let blob: Blob;
+      let blob: Blob | null;
 
       if (cachedBlob) {
         blob = cachedBlob;
