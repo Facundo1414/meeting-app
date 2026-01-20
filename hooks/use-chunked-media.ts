@@ -10,9 +10,6 @@ const memoryCache = new Map<string, string>();
 const DB_NAME = "media-cache";
 const STORE_NAME = "files";
 
-// Flag para usar proxy (reduce cached egress de Supabase)
-const USE_PROXY = true;
-
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDB(): Promise<IDBDatabase> {
@@ -84,7 +81,8 @@ async function setCachedBlob(fileId: string, blob: Blob): Promise<void> {
 
 /**
  * Hook para manejar archivos fragmentados (chunked files)
- * Descarga y ensambla archivos grandes con caché inteligente permanente
+ * Para archivos normales: retorna URL directa para que SW la cachee
+ * Para archivos chunked: descarga y ensambla con blob URL
  *
  * @param mediaUrl - URL del archivo (puede ser "chunked://" o URL normal)
  * @param autoLoad - Si false, no descarga automáticamente (útil para miniaturas)
@@ -103,7 +101,19 @@ export function useChunkedMedia(
 
     // Determinar si es chunked o URL normal
     const isChunked = mediaUrl.startsWith("chunked://");
-    const fileId = isChunked ? mediaUrl.replace("chunked://", "") : mediaUrl;
+
+    // Si NO es chunked, usar la URL directa para que el SW la intercepte
+    if (!isChunked) {
+      console.log(
+        `🔗 Using direct URL (SW will cache): ${mediaUrl.substring(0, 60)}...`,
+      );
+      setBlobUrl(mediaUrl);
+      setLoading(false);
+      return;
+    }
+
+    // Solo para archivos chunked usamos blobs
+    const fileId = mediaUrl.replace("chunked://", "");
 
     // Check memory cache first
     if (memoryCache.has(fileId)) {
@@ -119,53 +129,22 @@ export function useChunkedMedia(
       setError(null);
 
       try {
-        // Check IndexedDB cache first
+        // Check IndexedDB cache first (solo para chunked)
         const cachedBlob = await getCachedBlob(fileId);
 
-        let blob: Blob | null;
+        let blob: Blob;
         if (cachedBlob) {
-          console.log(`✅ Using cached file: ${isChunked ? fileId : "URL"}`);
+          console.log(`✅ Using cached chunked file: ${fileId}`);
           blob = cachedBlob;
         } else {
-          if (isChunked) {
-            // Archivo fragmentado - descargar y ensamblar chunks
-            console.log(`⬇️ Downloading chunked file: ${fileId}`);
-            blob = await downloadChunkedFile(fileId);
-          } else {
-            // URL normal - usar proxy para reducir egress de Supabase
-            if (USE_PROXY) {
-              console.log(`⬇️ Downloading file via proxy: ${mediaUrl}`);
-              const proxyUrl = `/api/media?url=${encodeURIComponent(mediaUrl)}`;
-              const response = await fetch(proxyUrl);
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-              blob = await response.blob();
-
-              // Log cache status
-              const cacheStatus = response.headers.get("X-Cache-Status");
-              if (cacheStatus === "HIT") {
-                console.log(
-                  `✅ Served from server cache (0 egress from Supabase)`,
-                );
-              } else {
-                console.log(`⬇️ Downloaded from Supabase (first time)`);
-              }
-            } else {
-              // Descarga directa (modo legacy)
-              console.log(`⬇️ Downloading file from URL: ${mediaUrl}`);
-              const response = await fetch(mediaUrl);
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-              blob = await response.blob();
-            }
-          }
+          // Archivo fragmentado - descargar y ensamblar chunks
+          console.log(`⬇️ Downloading chunked file: ${fileId}`);
+          blob = await downloadChunkedFile(fileId);
 
           if (blob) {
             // Cache the blob for future use
             console.log(
-              `💾 Caching file: ${isChunked ? fileId : "URL"} (${Math.round(blob.size / 1024)} KB)`,
+              `💾 Caching chunked file: ${fileId} (${Math.round(blob.size / 1024)} KB)`,
             );
             await setCachedBlob(fileId, blob);
           }
@@ -176,14 +155,14 @@ export function useChunkedMedia(
           return;
         }
 
-        // Crear una URL temporal para el blob
+        // Crear una URL temporal para el blob (solo chunked)
         const url = URL.createObjectURL(blob);
         setBlobUrl(url);
 
         // Store in memory cache
         memoryCache.set(fileId, url);
       } catch (err) {
-        console.error("Error loading file:", err);
+        console.error("Error loading chunked file:", err);
         setError("Error al cargar el archivo");
       } finally {
         setLoading(false);
@@ -205,7 +184,14 @@ export function useChunkedMedia(
     if (!mediaUrl) return;
 
     const isChunked = mediaUrl.startsWith("chunked://");
-    const fileId = isChunked ? mediaUrl.replace("chunked://", "") : mediaUrl;
+
+    // Si NO es chunked, usar URL directa
+    if (!isChunked) {
+      setBlobUrl(mediaUrl);
+      return;
+    }
+
+    const fileId = mediaUrl.replace("chunked://", "");
 
     if (memoryCache.has(fileId)) {
       setBlobUrl(memoryCache.get(fileId)!);
@@ -217,30 +203,13 @@ export function useChunkedMedia(
 
     try {
       const cachedBlob = await getCachedBlob(fileId);
-      let blob: Blob | null;
+      let blob: Blob;
 
       if (cachedBlob) {
         blob = cachedBlob;
       } else {
-        if (isChunked) {
-          blob = await downloadChunkedFile(fileId);
-        } else {
-          // Usar proxy para reducir egress
-          if (USE_PROXY) {
-            const proxyUrl = `/api/media?url=${encodeURIComponent(mediaUrl)}`;
-            const response = await fetch(proxyUrl);
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            blob = await response.blob();
-          } else {
-            const response = await fetch(mediaUrl);
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            blob = await response.blob();
-          }
-        }
+        // Solo chunked files llegan aquí
+        blob = await downloadChunkedFile(fileId);
 
         if (blob) {
           await setCachedBlob(fileId, blob);

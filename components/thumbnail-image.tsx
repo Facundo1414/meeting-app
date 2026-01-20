@@ -60,8 +60,11 @@ export function ThumbnailImage({
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center bg-gray-200 dark:bg-gray-700 ${className}`}>
-        <span className="text-xs text-gray-500">❌</span>
+      <div className={`flex items-center justify-center bg-gray-100 dark:bg-gray-800 ${className} border border-dashed border-gray-300 dark:border-gray-600`}>
+        <div className="text-center">
+          <span className="text-2xl">📦</span>
+          <p className="text-[10px] text-gray-400 mt-1">No en caché</p>
+        </div>
       </div>
     );
   }

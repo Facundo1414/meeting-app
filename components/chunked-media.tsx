@@ -31,8 +31,11 @@ export function ChunkedImage({
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center bg-gray-200 dark:bg-gray-700 ${className}`}>
-        <span className="text-sm text-gray-500">Error al cargar imagen</span>
+      <div className={`flex items-center justify-center bg-gray-100 dark:bg-gray-800 ${className} border-2 border-dashed border-gray-300 dark:border-gray-600`}>
+        <div className="text-center p-4">
+          <span className="text-3xl">📦</span>
+          <p className="text-xs text-gray-500 mt-2">No disponible en caché</p>
+        </div>
       </div>
     );
   }
@@ -90,8 +93,11 @@ export function ChunkedVideo({
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center bg-black ${className}`}>
-        <span className="text-sm text-white">Error al cargar video</span>
+      <div className={`flex items-center justify-center bg-gray-900 ${className} border-2 border-dashed border-gray-600`}>
+        <div className="text-center p-4">
+          <span className="text-4xl">🎬</span>
+          <p className="text-xs text-gray-400 mt-2">Video no disponible en caché</p>
+        </div>
       </div>
     );
   }

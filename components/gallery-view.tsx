@@ -2,22 +2,21 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getMediaMessages, Message, uploadMedia, sendMessage } from '@/lib/storage-supabase';
-import { supabase } from '@/lib/supabase';
+import { uploadMedia } from '@/lib/storage-supabase';
+import { getGalleryItems, filterByType, GalleryItem } from '@/lib/gallery-storage';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { ChunkedImage, ChunkedVideo, ChunkedAudio } from '@/components/chunked-media';
 import { ThumbnailImage } from '@/components/thumbnail-image';
 import { VideoThumbnail } from '@/components/video-thumbnail';
-import { CacheClearButton } from '@/components/cache-clear-button';
-import { BandwidthStatsDisplay } from '@/hooks/use-bandwidth-stats';
+import { CacheMonitor } from '@/components/cache-monitor';
 
 export function GalleryView() {
   const router = useRouter();
-  const [items, setItems] = useState<Message[]>([]);
+  const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Message | null>(null);
+  const [selected, setSelected] = useState<GalleryItem | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video' | 'audio'>('all');
   const [visibleItems, setVisibleItems] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
@@ -26,8 +25,9 @@ export function GalleryView() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showUploadMenu, setShowUploadMenu] = useState(false);
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
-  const itemsPerPage = 12;
+  const [showCacheMonitor, setShowCacheMonitor] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const itemsPerPage = 20;
   const observerRef = useRef<IntersectionObserver | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,9 +63,10 @@ export function GalleryView() {
     
     const loadMedia = async () => {
       try {
-        const media = await getMediaMessages();
+        const { items: media, hasMore: more } = await getGalleryItems(itemsPerPage, 0);
         if (mounted) {
           setItems(media);
+          setHasMore(more);
           setLoading(false);
         }
       } catch (err) {
@@ -76,49 +77,8 @@ export function GalleryView() {
 
     loadMedia();
 
-    // Subscribe to real-time updates
-    const channel = supabase
-      .channel('gallery_updates')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages_meeting_app' },
-        async (payload) => {
-          const newMsg = payload.new as any;
-          if (newMsg.media_url) {
-            const formattedMsg: Message = {
-              id: newMsg.id,
-              senderId: newMsg.sender_id,
-              senderUsername: newMsg.sender_username,
-              message: newMsg.message,
-              timestamp: newMsg.created_at,
-              readBy: newMsg.read_by || [],
-              mediaUrl: newMsg.media_url,
-              mediaType: newMsg.media_type,
-              reactions: newMsg.reactions || [],
-              replyToId: newMsg.reply_to_id,
-              editedAt: newMsg.edited_at,
-            };
-            if (mounted) {
-              setItems(prev => [formattedMsg, ...prev]);
-            }
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'messages_meeting_app' },
-        (payload) => {
-          const deletedId = (payload.old as any).id;
-          if (mounted) {
-            setItems(prev => prev.filter(m => m.id !== deletedId));
-          }
-        }
-      )
-      .subscribe();
-
     return () => {
       mounted = false;
-      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -126,20 +86,27 @@ export function GalleryView() {
     // Imagen cargada exitosamente
   };
 
-  const filteredItems = items.filter(item => 
-    filterType === 'all' || item.mediaType === filterType
-  );
+  const filteredItems = filterByType(items, filterType);
 
-  // Paginar items
-  const paginatedItems = filteredItems.slice(0, page * itemsPerPage);
-  const hasMore = paginatedItems.length < filteredItems.length;
-
-  const loadMore = () => {
+  // Mostrar los items cargados (sin paginación extra del lado cliente)
+  const paginatedItems = filteredItems;
+  
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    
     setLoadingMore(true);
-    setTimeout(() => {
-      setPage(prev => prev + 1);
+    try {
+      const { items: newItems, hasMore: more } = await getGalleryItems(
+        itemsPerPage, 
+        items.length
+      );
+      setItems(prev => [...prev, ...newItems]);
+      setHasMore(more);
+    } catch (error) {
+      console.error('Error loading more items:', error);
+    } finally {
       setLoadingMore(false);
-    }, 300);
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,7 +176,8 @@ export function GalleryView() {
     setUploading(true);
 
     try {
-      const mediaType = selectedFile.type.startsWith('image/') ? 'image' : 'video';
+      const mediaType = selectedFile.type.startsWith('image/') ? 'image' : 
+                       selectedFile.type.startsWith('video/') ? 'video' : 'audio';
       console.log('Starting upload process:', {
         fileName: selectedFile.name,
         fileSize: selectedFile.size,
@@ -227,18 +195,14 @@ export function GalleryView() {
       }
 
       console.log('Upload successful, mediaUrl:', mediaUrl);
-
-      // Send message with media
-      const sent = await sendMessage(user.id, user.username, '', mediaUrl, mediaType);
-      
-      if (!sent) {
-        console.error('Failed to send message with media');
-        toast.error('Archivo subido pero falló al crear el mensaje');
-        setUploading(false);
-        return;
-      }
       
       toast.success('Archivo subido exitosamente');
+      
+      // Recargar galería para mostrar el nuevo archivo
+      const { items: media, hasMore: more } = await getGalleryItems(itemsPerPage, 0);
+      setItems(media);
+      setHasMore(more);
+      
       removeSelectedFile();
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -269,12 +233,12 @@ export function GalleryView() {
   };
 
   const stats = {
-    images: items.filter(m => m.mediaType === 'image').length,
-    videos: items.filter(m => m.mediaType === 'video').length,
-    audios: items.filter(m => m.mediaType === 'audio').length,
+    images: items.filter(m => m.type === 'image').length,
+    videos: items.filter(m => m.type === 'video').length,
+    audios: items.filter(m => m.type === 'audio').length,
   };
 
-  // Reset page cuando cambia el filtro
+  // Reset cuando cambia el filtro
   useEffect(() => {
     setPage(1);
   }, [filterType]);
@@ -294,6 +258,11 @@ export function GalleryView() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Cache Monitor */}
+      {showCacheMonitor && (
+        <CacheMonitor onClose={() => setShowCacheMonitor(false)} />
+      )}
+      
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-3 sticky top-0 z-20 shadow-sm">
         <div className="max-w-3xl mx-auto">
@@ -315,32 +284,18 @@ export function GalleryView() {
               </div>
             </div>
             
-            {/* Botón de configuración */}
-            <button
-              onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-              className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100 text-xl"
-              aria-label="Configuración"
-            >
-              ⚙️
-            </button>
-          </div>
-          
-          {/* Menú de configuración desplegable */}
-          {showSettingsMenu && (
-            <div className="mb-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border dark:border-gray-700 space-y-4">
-              <div>
-                <h3 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">📊 Estadísticas de Uso</h3>
-                <BandwidthStatsDisplay />
-              </div>
-              
-              <hr className="dark:border-gray-700" />
-              
-              <div>
-                <h3 className="text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">🗄️ Gestión de Caché</h3>
-                <CacheClearButton />
-              </div>
+            {/* Botones de acción */}
+            <div className="flex items-center gap-2">
+              {/* Botón caché */}
+              <button
+                onClick={() => setShowCacheMonitor(!showCacheMonitor)}
+                className="text-gray-600 dark:text-gray-300 hover:text-blue-500 dark:hover:text-blue-400 text-xl"
+                aria-label="Monitor de caché"
+              >
+                📊
+              </button>
             </div>
-          )}
+          </div>
 
           {/* Filtros */}
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -426,11 +381,11 @@ export function GalleryView() {
                   data-id={it.id}
                   ref={observeElement}
                 >
-                  {it.mediaType === 'image' ? (
+                  {it.type === 'image' ? (
                     <div className="relative w-full h-28 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer">
                       {isVisible ? (
                         <ThumbnailImage
-                          src={it.mediaUrl}
+                          src={it.url}
                           alt={`Foto ${it.id}`}
                           className="w-full h-full"
                           onClick={() => setSelected(it)}
@@ -442,14 +397,14 @@ export function GalleryView() {
                         </div>
                       )}
                     </div>
-                  ) : it.mediaType === 'video' ? (
+                  ) : it.type === 'video' ? (
                     <div 
                       className="relative w-full h-28 bg-black rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
                       onClick={() => setSelected(it)}
                     >
                       {isVisible ? (
                         <VideoThumbnail
-                          src={it.mediaUrl}
+                          src={it.url}
                           alt={`Video ${it.id}`}
                           className="w-full h-full"
                         />
@@ -459,7 +414,7 @@ export function GalleryView() {
                         </div>
                       )}
                     </div>
-                  ) : it.mediaType === 'audio' ? (
+                  ) : it.type === 'audio' ? (
                     <div 
                       className="w-full h-28 flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
                       onClick={() => setSelected(it)}
@@ -472,13 +427,13 @@ export function GalleryView() {
                   {/* Overlay con info */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-lg pointer-events-none">
                     <div className="absolute bottom-1 left-1 right-1">
-                      <p className="text-white text-xs font-medium truncate">{it.senderUsername}</p>
+                      <p className="text-white text-xs font-medium truncate">{it.userId || 'Usuario'}</p>
                     </div>
                   </div>
                   
                   {/* Badge de fecha siempre visible */}
                   <div className="absolute left-1 top-1 bg-black/60 text-white text-xs px-2 py-0.5 rounded backdrop-blur-sm">
-                    {format(new Date(it.timestamp), 'dd/MM')}
+                    {format(new Date(it.createdAt), 'dd/MM')}
                   </div>
                 </div>
               );
@@ -487,7 +442,7 @@ export function GalleryView() {
         )}
 
         {/* Botón cargar más */}
-        {!loading && hasMore && (
+        {!loading && hasMore && paginatedItems.length > 0 && (
           <div className="flex justify-center mt-6 mb-4">
             <Button 
               onClick={loadMore}
@@ -500,7 +455,7 @@ export function GalleryView() {
                   Cargando...
                 </>
               ) : (
-                `Cargar más (${filteredItems.length - paginatedItems.length} restantes)`
+                'Cargar más'
               )}
             </Button>
           </div>
@@ -513,8 +468,8 @@ export function GalleryView() {
           {/* Header del modal */}
           <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-sm">
             <div className="text-white">
-              <p className="font-semibold">{selected.senderUsername}</p>
-              <p className="text-xs text-gray-300">{format(new Date(selected.timestamp), 'dd/MM/yyyy HH:mm')}</p>
+              <p className="font-semibold">{selected.userId || selected.name}</p>
+              <p className="text-xs text-gray-300">{format(new Date(selected.createdAt), 'dd/MM/yyyy HH:mm')}</p>
             </div>
             <button
               onClick={() => setSelected(null)}
@@ -527,34 +482,34 @@ export function GalleryView() {
 
           {/* Contenido */}
           <div className="flex-1 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
-            {selected.mediaType === 'image' ? (
+            {selected.type === 'image' ? (
               <ChunkedImage 
-                src={selected.mediaUrl} 
+                src={selected.url} 
                 alt="Selected" 
                 className="max-w-full max-h-full object-contain" 
               />
-            ) : selected.mediaType === 'video' ? (
+            ) : selected.type === 'video' ? (
               <ChunkedVideo 
-                src={selected.mediaUrl} 
+                src={selected.url} 
                 controls 
                 autoPlay
                 className="max-w-full max-h-full rounded-lg" 
               />
-            ) : selected.mediaType === 'audio' ? (
+            ) : selected.type === 'audio' ? (
               <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full">
                 <div className="text-center mb-4">
                   <span className="text-5xl">🎤</span>
                   <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">Mensaje de audio</p>
                 </div>
-                <ChunkedAudio src={selected.mediaUrl} controls className="w-full" autoPlay />
+                <ChunkedAudio src={selected.url} controls className="w-full" autoPlay />
               </div>
             ) : null}
           </div>
 
-          {/* Footer con mensaje si existe */}
-          {selected.message && (
+          {/* Footer con nombre de archivo */}
+          {selected.name && (
             <div className="p-4 bg-black/50 backdrop-blur-sm">
-              <p className="text-white text-center">{selected.message}</p>
+              <p className="text-white text-center text-sm">{selected.name}</p>
             </div>
           )}
         </div>
