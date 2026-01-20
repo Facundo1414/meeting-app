@@ -10,6 +10,9 @@ const memoryCache = new Map<string, string>();
 const DB_NAME = "media-cache";
 const STORE_NAME = "files";
 
+// Flag para usar proxy (reduce cached egress de Supabase)
+const USE_PROXY = true;
+
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDB(): Promise<IDBDatabase> {
@@ -88,7 +91,7 @@ async function setCachedBlob(fileId: string, blob: Blob): Promise<void> {
  */
 export function useChunkedMedia(
   mediaUrl: string | undefined,
-  autoLoad: boolean = true
+  autoLoad: boolean = true,
 ) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -129,19 +132,40 @@ export function useChunkedMedia(
             console.log(`⬇️ Downloading chunked file: ${fileId}`);
             blob = await downloadChunkedFile(fileId);
           } else {
-            // URL normal - descargar directamente
-            console.log(`⬇️ Downloading file from URL: ${mediaUrl}`);
-            const response = await fetch(mediaUrl);
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
+            // URL normal - usar proxy para reducir egress de Supabase
+            if (USE_PROXY) {
+              console.log(`⬇️ Downloading file via proxy: ${mediaUrl}`);
+              const proxyUrl = `/api/media?url=${encodeURIComponent(mediaUrl)}`;
+              const response = await fetch(proxyUrl);
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              blob = await response.blob();
+
+              // Log cache status
+              const cacheStatus = response.headers.get("X-Cache-Status");
+              if (cacheStatus === "HIT") {
+                console.log(
+                  `✅ Served from server cache (0 egress from Supabase)`,
+                );
+              } else {
+                console.log(`⬇️ Downloaded from Supabase (first time)`);
+              }
+            } else {
+              // Descarga directa (modo legacy)
+              console.log(`⬇️ Downloading file from URL: ${mediaUrl}`);
+              const response = await fetch(mediaUrl);
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              blob = await response.blob();
             }
-            blob = await response.blob();
           }
 
           if (blob) {
             // Cache the blob for future use
             console.log(
-              `💾 Caching file: ${isChunked ? fileId : "URL"} (${Math.round(blob.size / 1024)} KB)`
+              `💾 Caching file: ${isChunked ? fileId : "URL"} (${Math.round(blob.size / 1024)} KB)`,
             );
             await setCachedBlob(fileId, blob);
           }
@@ -201,11 +225,21 @@ export function useChunkedMedia(
         if (isChunked) {
           blob = await downloadChunkedFile(fileId);
         } else {
-          const response = await fetch(mediaUrl);
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+          // Usar proxy para reducir egress
+          if (USE_PROXY) {
+            const proxyUrl = `/api/media?url=${encodeURIComponent(mediaUrl)}`;
+            const response = await fetch(proxyUrl);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            blob = await response.blob();
+          } else {
+            const response = await fetch(mediaUrl);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            blob = await response.blob();
           }
-          blob = await response.blob();
         }
 
         if (blob) {
