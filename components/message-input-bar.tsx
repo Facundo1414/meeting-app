@@ -215,7 +215,7 @@ export const MessageInputBar = memo(function MessageInputBar({
               placeholder:text-[#8696A0]
               px-4 py-3
               pr-12
-              text-sm
+              text-base
               resize-none
               max-h-32
               focus:outline-none

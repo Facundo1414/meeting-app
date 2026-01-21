@@ -980,7 +980,7 @@ export function MessagesView() {
       {/* Messages */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-4 lg:px-8 space-y-3 max-w-5xl lg:mx-auto w-full"
+        className="flex-1 overflow-y-auto p-3 lg:p-4 lg:px-8 space-y-1.5 lg:space-y-3 max-w-5xl lg:mx-auto w-full"
         onScroll={handleScroll}
       >
         {/* Button to load older messages (estilo Telegram) */}
