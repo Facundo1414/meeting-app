@@ -94,7 +94,16 @@ export const MessageBubble = memo(function MessageBubble({
           )}
 
           {/* Message content */}
-          {children || (
+          {children ? (
+            <>
+              {children}
+              {message && (
+                <p className="text-sm whitespace-pre-wrap break-words mt-2">
+                  {message}
+                </p>
+              )}
+            </>
+          ) : (
             <p className="text-sm whitespace-pre-wrap break-words">
               {message}
             </p>

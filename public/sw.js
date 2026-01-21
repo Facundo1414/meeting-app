@@ -1,11 +1,11 @@
 // Service Worker para cachear media en iPhone/Safari
 // Cache API es más confiable que IndexedDB en iOS
 
-const CACHE_NAME = 'meeting-app-media-v1';
+const CACHE_NAME = 'meeting-app-media-v2';
 const MEDIA_CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 días
 
 // Flag: después de la primera descarga, NUNCA más descargar de Supabase
-const STRICT_CACHE_MODE = true;
+const STRICT_CACHE_MODE = false;
 
 // Instalar service worker
 self.addEventListener('install', (event) => {
@@ -37,9 +37,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // Detectar requests de media
+  // Detectar requests de media (cualquier imagen, video, audio)
   const isMediaRequest = 
     url.pathname.startsWith('/api/media') ||
+    url.pathname.match(/\.(jpg|jpeg|png|gif|webp|mp4|webm|mp3|wav|m4a)$/i) ||
     (url.hostname.includes('supabase.co') && 
      (url.pathname.includes('/storage/v1/object/public/') || 
       url.pathname.includes('/storage/v1/render/')));
@@ -81,42 +82,8 @@ self.addEventListener('fetch', (event) => {
           });
         }
 
-        // Si STRICT_CACHE_MODE está activado y ya hay otros archivos en cache,
-        // NO descargar de Supabase (segunda vuelta en adelante)
-        if (STRICT_CACHE_MODE) {
-          const cacheKeys = await cache.keys();
-          const mediaFilesInCache = cacheKeys.filter(req => {
-            const reqUrl = new URL(req.url);
-            return reqUrl.hostname.includes('supabase.co') && 
-                   reqUrl.pathname.includes('/storage/v1/');
-          });
-
-          // Si ya hay archivos en cache, significa que no es la primera carga
-          if (mediaFilesInCache.length > 0) {
-            console.log('🚫 STRICT MODE: Cache MISS pero NO descargando de Supabase (hay', mediaFilesInCache.length, 'archivos en cache)');
-            
-            // Notificar a la app que el archivo no está en cache
-            self.clients.matchAll().then(clients => {
-              clients.forEach(client => {
-                client.postMessage({
-                  type: 'CACHE_MISS_BLOCKED',
-                  url: event.request.url,
-                  time: new Date().toLocaleTimeString()
-                });
-              });
-            });
-            
-            // Retornar un placeholder o error 404
-            return new Response('Archivo no disponible en caché', {
-              status: 404,
-              statusText: 'Not in cache',
-              headers: { 'Content-Type': 'text/plain', 'x-cache-status': 'MISS-BLOCKED' }
-            });
-          }
-        }
-
-        // Primera carga: descargar de Supabase
-        console.log('⬇️ Cache MISS (primera carga), downloading:', url.pathname.substring(0, 50));
+        // Cache MISS: descargar del servidor
+        console.log('⬇️ Cache MISS, downloading:', url.pathname.substring(0, 50));
         
         // Notificar a la app
         self.clients.matchAll().then(clients => {
@@ -145,11 +112,22 @@ self.addEventListener('fetch', (event) => {
             headers: headers
           });
           
-          // Solo cachear si es un request GET
+          // Cachear la respuesta modificada
           cache.put(event.request, modifiedResponse).then(() => {
-            console.log('💾 Cached:', url.pathname.substring(0, 50));
+            console.log('💾 Successfully cached:', url.pathname.substring(0, 50));
+            
+            // Notificar a la app del cacheo exitoso
+            self.clients.matchAll().then(clients => {
+              clients.forEach(client => {
+                client.postMessage({
+                  type: 'CACHE_STORED',
+                  url: event.request.url,
+                  time: new Date().toLocaleTimeString()
+                });
+              });
+            });
           }).catch(err => {
-            console.error('Error caching:', err);
+            console.error('❌ Error caching:', err);
           });
         }
         

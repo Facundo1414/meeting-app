@@ -46,7 +46,6 @@ export function MessagesView() {
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const [showHelpTooltip, setShowHelpTooltip] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
@@ -345,9 +344,6 @@ export function MessagesView() {
       if (showAttachmentMenu && !target.closest('.relative')) {
         setShowAttachmentMenu(false);
       }
-      if (showProfileMenu && !target.closest('.profile-menu-container')) {
-        setShowProfileMenu(false);
-      }
       if (showMenu && !target.closest('[data-message-options]')) {
         setShowMenu(null);
       }
@@ -358,7 +354,7 @@ export function MessagesView() {
 
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [showAttachmentMenu, showProfileMenu, showMenu, showReactions]);
+  }, [showAttachmentMenu, showMenu, showReactions]);
 
   const loadMessages = async () => {
     const { messages: data, hasMore } = await getMessagesPaginated(50);
@@ -973,7 +969,6 @@ export function MessagesView() {
           userStatus={otherUserOnline ? 'En línea' : otherUserLastSeen ? formatLastSeen(otherUserLastSeen) : undefined}
           isOnline={otherUserOnline}
           onBack={() => router.push('/calendar')}
-          onMoreOptions={() => setShowProfileMenu(!showProfileMenu)}
         />
       </div>
 
@@ -1091,7 +1086,7 @@ export function MessagesView() {
                       e.stopPropagation();
                       setShowMenu(showMenu === msg.id ? null : msg.id);
                     }}
-                    className="w-7 h-7 flex items-center justify-center rounded-full opacity-0 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-[#202C33] shrink-0"
+                    className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 lg:opacity-0 lg:hover:opacity-100 transition-opacity hover:bg-[#202C33] shrink-0"
                     aria-label="Opciones"
                   >
                     <span className="text-base text-[#8696A0]">⋯</span>
