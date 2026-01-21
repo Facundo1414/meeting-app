@@ -1030,53 +1030,69 @@ export function MessagesView() {
               )}
               
               {/* Mensaje */}
-              <MessageBubble
-                message={msg.message || ''}
-                timestamp={msg.timestamp}
-                isOwnMessage={isOwn}
-                status={isOwn ? ((msg.readBy || []).length > 1 ? 'read' : 'sent') : undefined}
-                isEdited={!!msg.editedAt}
-                reactions={reactionsRecord}
-                replyTo={repliedMsg ? {
-                  sender: repliedMsg.senderUsername,
-                  message: repliedMsg.message || (repliedMsg.mediaType ? `📎 ${repliedMsg.mediaType}` : 'Mensaje')
-                } : undefined}
-                onDoubleTap={() => !msg.id.startsWith('temp-') && handleDoubleTap(msg)}
-                onReactionClick={(emoji) => handleReaction(msg.id, emoji)}
+              <div
+                onTouchStart={(e) => {
+                  if (!msg.id.startsWith('temp-')) {
+                    handleLongPressStart(msg.id);
+                    handleTouchStart(e, msg);
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  handleLongPressEnd();
+                  handleTouchEnd(e, msg);
+                }}
+                onMouseDown={() => !msg.id.startsWith('temp-') && handleLongPressStart(msg.id)}
+                onMouseUp={handleLongPressEnd}
+                onMouseLeave={handleLongPressEnd}
               >
-                {/* Media content */}
-                {msg.mediaUrl && (
-                  <div className="mb-2">
-                    {msg.mediaType === 'image' ? (
-                      <img 
-                        src={msg.mediaUrl}
-                        alt="Imagen" 
-                        className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                        style={{ maxHeight: '400px', minHeight: '100px', objectFit: 'contain' }}
-                        loading="lazy"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFullScreenImage(msg.mediaUrl || null);
-                        }}
-                        onError={(e) => {
-                          console.error('Error loading image:', msg.mediaUrl);
-                        }}
-                      />
-                    ) : msg.mediaType === 'video' ? (
-                      <video 
-                        src={msg.mediaUrl} 
-                        controls 
-                        className="max-w-full rounded-lg max-h-80"
-                      />
-                    ) : msg.mediaType === 'audio' ? (
-                      <SmartAudioPlayer 
-                        src={msg.mediaUrl} 
-                        isOwn={isOwn}
-                      />
-                    ) : null}
-                  </div>
-                )}
-              </MessageBubble>
+                <MessageBubble
+                  message={msg.message || ''}
+                  timestamp={msg.timestamp}
+                  isOwnMessage={isOwn}
+                  status={isOwn ? ((msg.readBy || []).length > 1 ? 'read' : 'sent') : undefined}
+                  isEdited={!!msg.editedAt}
+                  reactions={reactionsRecord}
+                  replyTo={repliedMsg ? {
+                    sender: repliedMsg.senderUsername,
+                    message: repliedMsg.message || (repliedMsg.mediaType ? `📎 ${repliedMsg.mediaType}` : 'Mensaje')
+                  } : undefined}
+                  onDoubleTap={() => !msg.id.startsWith('temp-') && handleDoubleTap(msg)}
+                  onReactionClick={(emoji) => handleReaction(msg.id, emoji)}
+                >
+                  {/* Media content */}
+                  {msg.mediaUrl && (
+                    <div className="mb-2">
+                      {msg.mediaType === 'image' ? (
+                        <img 
+                          src={msg.mediaUrl}
+                          alt="Imagen" 
+                          className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                          style={{ maxHeight: '400px', minHeight: '100px', objectFit: 'contain' }}
+                          loading="lazy"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFullScreenImage(msg.mediaUrl || null);
+                          }}
+                          onError={(e) => {
+                            console.error('Error loading image:', msg.mediaUrl);
+                          }}
+                        />
+                      ) : msg.mediaType === 'video' ? (
+                        <video 
+                          src={msg.mediaUrl} 
+                          controls 
+                          className="max-w-full rounded-lg max-h-80"
+                        />
+                      ) : msg.mediaType === 'audio' ? (
+                        <SmartAudioPlayer 
+                          src={msg.mediaUrl} 
+                          isOwn={isOwn}
+                        />
+                      ) : null}
+                    </div>
+                  )}
+                </MessageBubble>
+              </div>
 
               {/* Botón de opciones - oculto, usar long press */}
             
