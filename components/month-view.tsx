@@ -11,6 +11,7 @@ import { CalendarMonthSkeleton } from '@/components/calendar-skeleton';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { PageTransition } from '@/components/page-transition';
 import { SyncIndicator } from '@/components/sync-indicator';
+import { DesktopSidebar } from '@/components/desktop-sidebar';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -226,11 +227,21 @@ export function MonthView() {
   const otherUserId = user.id === '1' ? '2' : '1';
 
   return (
-    <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-6 overflow-auto">
-      <div className="h-full overflow-auto">
-        <SyncIndicator isSyncing={isSyncing} />
-        <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
-        <div className="flex items-center justify-between p-4 h-16">
+    <>
+      <DesktopSidebar 
+        user={user}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onLogout={handleLogout}
+      />
+      
+      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-6 overflow-auto lg:ml-64">
+        <div className="h-full overflow-auto">
+          <SyncIndicator isSyncing={isSyncing} />
+          
+          {/* Mobile Header */}
+          <div className="lg:hidden sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
+            <div className="flex items-center justify-between p-4 h-16">
           <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
             <button
               onClick={() => router.push('/calendar')}
@@ -304,8 +315,8 @@ export function MonthView() {
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between px-4 pb-3 border-t dark:border-gray-700 pt-3">
-          <Button 
+            <div className="flex items-center justify-between px-4 pb-3 border-t dark:border-gray-700 pt-3">
+              <Button 
             variant="outline" 
             size="sm" 
             onClick={() => changeMonth(-1)}
@@ -321,29 +332,71 @@ export function MonthView() {
           >
             Hoy
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => changeMonth(1)}
-            className="dark:border-gray-600 dark:text-gray-200"
-          >
-            →
-          </Button>
-        </div>
-      </div>
-
-      <div className="p-4">
-        {/* Header de días */}
-        <div className="grid grid-cols-7 gap-1 mb-2">
-          {DAYS.map((day) => (
-            <div key={day} className="text-center text-xs font-semibold text-gray-600 dark:text-gray-400 py-2">
-              {day}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => changeMonth(1)}
+                className="dark:border-gray-600 dark:text-gray-200"
+              >
+                →
+              </Button>
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* Grid de días */}
-        <div className="grid grid-cols-7 gap-1">
+          {/* Desktop Header */}
+          <div className="hidden lg:block sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10 border-b border-border">
+            <div className="px-8 py-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-3xl font-bold dark:text-gray-100">
+                  {currentMonth.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
+                </h2>
+                <Button 
+                  size="sm" 
+                  onClick={() => router.push('/calendar')}
+                  variant="outline"
+                >
+                  📅 Vista Día
+                </Button>
+              </div>
+              <div className="flex items-center justify-center gap-4">
+                <Button 
+                  variant="outline" 
+                  onClick={() => changeMonth(-1)}
+                  className="dark:border-gray-600 dark:text-gray-200"
+                >
+                  ← Mes Anterior
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setCurrentMonth(new Date())}
+                  className="dark:border-gray-600 dark:text-gray-200 min-w-24"
+                >
+                  Hoy
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => changeMonth(1)}
+                  className="dark:border-gray-600 dark:text-gray-200"
+                >
+                  Mes Siguiente →
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 lg:p-8 max-w-7xl lg:mx-auto">
+            {/* Header de días */}
+            <div className="grid grid-cols-7 gap-2 lg:gap-3 mb-2">
+              {DAYS.map((day, idx) => (
+                <div key={day} className="text-center text-xs lg:text-sm font-semibold text-gray-600 dark:text-gray-400 py-2 lg:py-3">
+                  <span className="lg:hidden">{day}</span>
+                  <span className="hidden lg:inline">{['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][idx]}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Grid de días */}
+            <div className="grid grid-cols-7 gap-2 lg:gap-3">
           {monthDays.map((day) => {
             const { my: mySlots, other: otherSlots } = getDaySlots(day);
             const today = isToday(day);
@@ -361,54 +414,67 @@ export function MonthView() {
                   }
                 }}
                 className={`
-                  min-h-20 p-2 rounded-lg border cursor-pointer transition-colors
-                  ${today ? 'ring-2 ring-blue-400 bg-blue-50 dark:bg-blue-900/30' : ''}
+                  min-h-20 lg:min-h-32 p-2 lg:p-3 rounded-lg border cursor-pointer transition-all
+                  ${today ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/30 shadow-lg' : ''}
                   ${!currentMo ? 'opacity-40' : ''}
-                  ${past ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600'}
+                  ${past ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-700 hover:shadow-md active:bg-gray-100 dark:active:bg-gray-600'}
                   ${currentMo && !past && !today ? 'bg-white dark:bg-gray-800' : ''}
                   border-gray-200 dark:border-gray-700
                 `}
               >
-                <div className={`text-xs font-semibold mb-1 ${today ? 'text-blue-600 dark:text-blue-400' : past ? 'text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                <div className={`text-xs lg:text-base font-semibold mb-1 lg:mb-2 ${today ? 'text-blue-600 dark:text-blue-400' : past ? 'text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
                   {day.getDate()}
                 </div>
                 
                 {/* Indicadores de eventos */}
-                <div className="space-y-0.5">
+                <div className="space-y-1 lg:space-y-1.5">
                   {mySlots.length > 0 && (
-                    <div className="flex gap-0.5">
-                      {mySlots.slice(0, 2).map((slot) => {
-                        const type = slot.eventType || 'unavailable';
-                        let color = 'bg-red-500';
-                        if (type === 'plan') color = 'bg-green-500';
-                        else if (type === 'meeting') color = 'bg-blue-500';
-                        else if (type === 'tentative') color = 'bg-yellow-500';
-                        return <div key={slot.id} className={`h-1.5 flex-1 rounded ${color}`} />;
-                      })}
+                    <div className="space-y-0.5">
+                      <div className="text-[10px] lg:text-xs text-gray-600 dark:text-gray-400 font-medium hidden lg:block">Tu disponibilidad:</div>
+                      <div className="flex gap-0.5 lg:gap-1">
+                        {mySlots.slice(0, 3).map((slot) => {
+                          const type = slot.eventType || 'unavailable';
+                          let color = 'bg-red-500';
+                          let emoji = '🔴';
+                          if (type === 'plan') { color = 'bg-green-500'; emoji = '🟢'; }
+                          else if (type === 'meeting') { color = 'bg-blue-500'; emoji = '🔵'; }
+                          else if (type === 'tentative') { color = 'bg-yellow-500'; emoji = '🟡'; }
+                          return (
+                            <div key={slot.id} className="flex-1">
+                              <div className={`h-1.5 lg:h-2 rounded ${color}`} title={slot.note || type} />
+                              <div className="lg:hidden">{emoji}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                   {otherSlots.length > 0 && (
-                    <div className="flex gap-0.5">
-                      {otherSlots.slice(0, 2).map((slot) => {
-                        const type = slot.eventType || 'unavailable';
-                        let color = 'bg-red-300';
-                        if (type === 'plan') color = 'bg-green-300';
-                        else if (type === 'meeting') color = 'bg-blue-300';
-                        else if (type === 'tentative') color = 'bg-yellow-300';
-                        return <div key={slot.id} className={`h-1.5 flex-1 rounded ${color}`} />;
-                      })}
+                    <div className="space-y-0.5">
+                      <div className="text-[10px] lg:text-xs text-gray-500 dark:text-gray-500 hidden lg:block">Otro usuario:</div>
+                      <div className="flex gap-0.5 lg:gap-1">
+                        {otherSlots.slice(0, 3).map((slot) => {
+                          const type = slot.eventType || 'unavailable';
+                          let color = 'bg-red-300 dark:bg-red-400';
+                          if (type === 'plan') color = 'bg-green-300 dark:bg-green-400';
+                          else if (type === 'meeting') color = 'bg-blue-300 dark:bg-blue-400';
+                          else if (type === 'tentative') color = 'bg-yellow-300 dark:bg-yellow-400';
+                          return <div key={slot.id} className={`h-1.5 lg:h-2 flex-1 rounded ${color}`} title={slot.note || type} />;
+                        })}
+                      </div>
                     </div>
                   )}
-                  {(mySlots.length > 2 || otherSlots.length > 2) && (
-                    <div className="text-[10px] text-gray-500 dark:text-gray-400">+{(mySlots.length + otherSlots.length) - 4}</div>
+                  {(mySlots.length > 3 || otherSlots.length > 3) && (
+                    <div className="text-[10px] lg:text-xs text-gray-500 dark:text-gray-400 mt-1">+{Math.max(mySlots.length + otherSlots.length - 6, 0)} más</div>
                   )}
                 </div>
               </div>
             );
           })}
+            </div>
+          </div>
         </div>
-      </div>
-      </div>
-    </PageTransition>
+      </PageTransition>
+    </>
   );
 }

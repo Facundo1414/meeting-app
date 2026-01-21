@@ -41,20 +41,20 @@ export function LoginForm() {
   };
 
   return (
-    <div className="w-full max-w-md">
-      <Card className={`relative z-10 shadow-xl ${shake ? 'animate-shake' : ''}`}>
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-3xl font-bold text-center bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+    <div className="w-full max-w-md lg:max-w-lg">
+      <Card className={`relative z-10 shadow-2xl border-2 ${shake ? 'animate-shake' : ''}`}>
+        <CardHeader className="space-y-3 pb-6">
+          <CardTitle className="text-3xl lg:text-4xl font-bold text-center bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Calendar
           </CardTitle>
-          <CardDescription className="text-center">
+          <CardDescription className="text-center text-base">
             Ingresa tus credenciales para continuar
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <CardContent className="px-6 lg:px-8">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-medium">
+              <label htmlFor="username" className="text-sm font-medium block">
                 Usuario
               </label>
               <Input
@@ -65,10 +65,11 @@ export function LoginForm() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 disabled={isLoading}
+                className="h-11 text-base"
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium">
+              <label htmlFor="password" className="text-sm font-medium block">
                 Contraseña
               </label>
               <Input
@@ -79,22 +80,20 @@ export function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={isLoading}
+                className="h-11 text-base"
               />
             </div>
             {error && (
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-red-600 bg-red-50 dark:bg-red-950 p-3 rounded-md">{error}</p>
             )}
             <Button 
               type="submit" 
-              className="w-full relative overflow-hidden group"
+              className="w-full h-11 text-base relative overflow-hidden group bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               disabled={isLoading}
             >
               <span className="relative z-10">
                 {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
               </span>
-              {!isLoading && (
-                <span className="absolute inset-0 bg-linear-to-r from-blue-600 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              )}
             </Button>
           </form>
         </CardContent>

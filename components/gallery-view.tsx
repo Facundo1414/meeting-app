@@ -11,9 +11,13 @@ import { ChunkedImage, ChunkedVideo, ChunkedAudio } from '@/components/chunked-m
 import { ThumbnailImage } from '@/components/thumbnail-image';
 import { VideoThumbnail } from '@/components/video-thumbnail';
 import { CacheMonitor } from '@/components/cache-monitor';
+import { DesktopSidebar } from '@/components/desktop-sidebar';
+import { User } from '@/lib/auth-supabase';
 
 export function GalleryView() {
   const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<GalleryItem | null>(null);
@@ -36,6 +40,18 @@ export function GalleryView() {
     if (!element || !observerRef.current) return;
     observerRef.current.observe(element);
   }, []);
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      router.push('/');
+      return;
+    }
+    setUser(JSON.parse(userData));
+    
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(savedDarkMode);
+  }, [router]);
 
   useEffect(() => {
     // Configurar Intersection Observer para lazy loading más eficiente
@@ -256,29 +272,48 @@ export function GalleryView() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showUploadMenu]);
 
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    router.push('/');
+  };
+
+  const toggleDarkMode = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', String(newDarkMode));
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Cache Monitor */}
-      {showCacheMonitor && (
-        <CacheMonitor onClose={() => setShowCacheMonitor(false)} />
-      )}
+    <>
+      <DesktopSidebar 
+        user={user}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onLogout={handleLogout}
+      />
       
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-3 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-3xl mx-auto">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 lg:ml-64">
+        {/* Header */}
+        <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-3 lg:p-6 sticky top-0 z-20 shadow-sm">
+        <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => router.back()}
-                className="dark:border-gray-600 dark:text-gray-200 px-2 h-8"
+                className="lg:hidden dark:border-gray-600 dark:text-gray-200 px-2 h-8"
               >
                 ←
               </Button>
               <div>
-                <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100">Galería en Común</h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
+                <h1 className="text-lg lg:text-2xl font-bold text-gray-800 dark:text-gray-100">Galería en Común</h1>
+                <p className="text-xs lg:text-sm text-gray-500 dark:text-gray-400">
                   {filteredItems.length} {filterType === 'all' ? 'archivos' : filterType === 'image' ? 'fotos' : filterType === 'video' ? 'videos' : 'audios'}
                 </p>
               </div>
@@ -343,14 +378,13 @@ export function GalleryView() {
             )}
           </div>
         </div>
-      </div>
 
-      {/* Contenido */}
-      <div className="max-w-3xl mx-auto p-3">
+        {/* Contenido */}
+        <div className="max-w-7xl mx-auto p-3 lg:p-6">
         {loading ? (
-          <div className="grid grid-cols-3 gap-2">
-            {[...Array(9)].map((_, i) => (
-              <div key={i} className="w-full h-28 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
+          <div className="grid grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2 lg:gap-4">
+            {[...Array(18)].map((_, i) => (
+              <div key={i} className="w-full h-28 lg:h-48 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
             ))}
           </div>
         ) : paginatedItems.length === 0 ? (
@@ -370,7 +404,7 @@ export function GalleryView() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2 lg:gap-4">
             {paginatedItems.map((it) => {
               const isVisible = visibleItems.has(it.id);
               
@@ -382,7 +416,7 @@ export function GalleryView() {
                   ref={observeElement}
                 >
                   {it.type === 'image' ? (
-                    <div className="relative w-full h-28 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer">
+                    <div className="relative w-full h-28 lg:h-48 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer">
                       {isVisible ? (
                         <ThumbnailImage
                           src={it.url}
@@ -399,7 +433,7 @@ export function GalleryView() {
                     </div>
                   ) : it.type === 'video' ? (
                     <div 
-                      className="relative w-full h-28 bg-black rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                      className="relative w-full h-28 lg:h-48 bg-black rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
                       onClick={() => setSelected(it)}
                     >
                       {isVisible ? (
@@ -416,7 +450,7 @@ export function GalleryView() {
                     </div>
                   ) : it.type === 'audio' ? (
                     <div 
-                      className="w-full h-28 flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+                      className="w-full h-28 lg:h-48 flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
                       onClick={() => setSelected(it)}
                     >
                       <span className="text-3xl mb-1">🎤</span>
@@ -460,11 +494,73 @@ export function GalleryView() {
             </Button>
           </div>
         )}
-      </div>
+        </div>
+        </div>
 
-      {/* Modal */}
-      {selected && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col" onClick={() => setSelected(null)}>
+        {/* Input oculto para archivos */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*"
+          capture="environment"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
+        {/* Vista previa del archivo seleccionado */}
+        {selectedFile && previewUrl && (
+          <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100">Vista previa</h3>
+                <button
+                  onClick={removeSelectedFile}
+                  disabled={uploading}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                {selectedFile.type.startsWith('image/') ? (
+                  <img src={previewUrl} alt="Preview" className="w-full rounded-lg" />
+                ) : (
+                  <video src={previewUrl} className="w-full rounded-lg" controls />
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={removeSelectedFile}
+                  variant="outline"
+                  disabled={uploading}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleUpload}
+                  disabled={uploading}
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  {uploading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Subiendo...
+                    </>
+                  ) : (
+                    'Subir'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de visualización */}
+        {selected && (
+          <div className="fixed inset-0 z-50 bg-black/95 flex flex-col" onClick={() => setSelected(null)}>
           {/* Header del modal */}
           <div className="flex items-center justify-between p-4 bg-black/50 backdrop-blur-sm">
             <div className="text-white">
@@ -512,104 +608,49 @@ export function GalleryView() {
               <p className="text-white text-center text-sm">{selected.name}</p>
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Input oculto para archivos */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,video/*"
-        capture="environment"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
-
-      {/* Vista previa del archivo seleccionado */}
-      {selectedFile && previewUrl && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Vista previa</h3>
+        {/* Botón flotante para subir archivos */}
+        {!selectedFile && !selected && (
+          <div className="fixed bottom-6 right-6 z-30">
+            <div className="relative">
+              {/* Menú desplegable */}
+              {showUploadMenu && (
+                <div className="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-[180px]">
+                  <button
+                    onClick={handleCameraCapture}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md dark:text-gray-200"
+                  >
+                    📷 <span>Cámara</span>
+                  </button>
+                  <button
+                    onClick={handleGallerySelect}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md dark:text-gray-200"
+                  >
+                    📎 <span>Galería</span>
+                  </button>
+                </div>
+              )}
+              
+              {/* Botón principal */}
               <button
-                onClick={removeSelectedFile}
-                disabled={uploading}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                onClick={() => setShowUploadMenu(!showUploadMenu)}
+                className="w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-110"
+                title="Subir foto o video"
               >
-                ✕
+                ➕
               </button>
             </div>
-            
-            <div className="mb-4">
-              {selectedFile.type.startsWith('image/') ? (
-                <img src={previewUrl} alt="Preview" className="w-full rounded-lg" />
-              ) : (
-                <video src={previewUrl} className="w-full rounded-lg" controls />
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={removeSelectedFile}
-                variant="outline"
-                disabled={uploading}
-                className="flex-1"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleUpload}
-                disabled={uploading}
-                className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
-              >
-                {uploading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    Subiendo...
-                  </>
-                ) : (
-                  'Subir'
-                )}
-              </Button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Botón flotante para subir archivos */}
-      {!selectedFile && !selected && (
-        <div className="fixed bottom-6 right-6 z-30">
-          <div className="relative">
-            {/* Menú desplegable */}
-            {showUploadMenu && (
-              <div className="absolute bottom-full right-0 mb-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-[180px]">
-                <button
-                  onClick={handleCameraCapture}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md dark:text-gray-200"
-                >
-                  📷 <span>Cámara</span>
-                </button>
-                <button
-                  onClick={handleGallerySelect}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md dark:text-gray-200"
-                >
-                  📎 <span>Galería</span>
-                </button>
-              </div>
-            )}
-            
-            {/* Botón principal */}
-            <button
-              onClick={() => setShowUploadMenu(!showUploadMenu)}
-              className="w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-110"
-              title="Subir foto o video"
-            >
-              ➕
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+        {/* Cache Monitor */}
+        {showCacheMonitor && (
+          <CacheMonitor onClose={() => setShowCacheMonitor(false)} />
+        )}
+      </div>
+    </>
   );
 }
 

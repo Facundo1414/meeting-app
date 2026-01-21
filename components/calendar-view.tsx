@@ -16,6 +16,7 @@ import { CalendarDaySkeleton } from '@/components/calendar-skeleton';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { PageTransition } from '@/components/page-transition';
 import { SyncIndicator } from '@/components/sync-indicator';
+import { DesktopSidebar } from '@/components/desktop-sidebar';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
 
@@ -316,124 +317,172 @@ export function CalendarView() {
   if (!user) return null;
 
   return (
-    <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 overflow-auto">
-      <div className="h-full overflow-auto">
-        <SyncIndicator isSyncing={isSyncing} />
-        
-        <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
-        <div className="flex items-center justify-between p-2 gap-2">
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-            <button
-              onClick={() => router.push('/week')}
-              className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
-              title="Vista mensual"
-            >
-              📅
-            </button>
-            <button
-              onClick={toggleDarkMode}
-              className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
-              title="Cambiar tema"
-            >
-              {darkMode ? '☀️' : '🌙'}
-            </button>
-          </div>
-          <h1 className="text-base font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
-            Calendar
-          </h1>
-          <div className="flex gap-1 items-center">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => {
-                if (user) {
-                  localStorage.setItem(`lastReadMessage_${user.id}`, new Date().toISOString());
-                  setUnreadCount(0);
-                }
-                router.push('/messages');
-              }}
-              className="relative bg-blue-500 text-white hover:bg-blue-600 border-blue-600 px-2 text-xs h-8"
-            >
-              💬
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold text-[10px]">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </Button>
-            
-            {/* Menú hamburguesa de perfil */}
-            <div className="relative profile-menu-container">
-              <button
-                onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="px-2 py-1 text-sm rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 h-8"
-                title="Perfil y configuración"
-              >
-                ☰
-              </button>
-              
-              {showProfileMenu && (
-                <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl z-50 overflow-hidden">
-                  {/* Perfil */}
-                  <div className="p-4 bg-linear-to-r from-blue-500 to-purple-500">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-700 flex items-center justify-center text-2xl">
-                        {user?.username.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-bold text-white">{user?.username}</div>
-                        <div className="text-xs text-white/80">Usuario #{user?.id}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Última conexión */}
-                  <div className="px-4 py-3 border-b dark:border-gray-700">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Última conexión</div>
-                    <div className="text-sm text-gray-700 dark:text-gray-300">
-                      {new Date().toLocaleString('es-AR', { 
-                        timeZone: 'America/Argentina/Cordoba',
-                        day: '2-digit',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </div>
-                  </div>
-                  
-                  {/* Botón salir */}
+    <>
+      <DesktopSidebar 
+        user={user}
+        unreadCount={unreadCount}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onLogout={handleLogout}
+      />
+      
+      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 lg:pb-4 overflow-auto lg:ml-64">
+        <div className="h-full overflow-auto">
+          <SyncIndicator isSyncing={isSyncing} />
+          
+          {/* Mobile Header */}
+          <div className="lg:hidden sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
+            <div className="flex items-center justify-between p-2 gap-2">
+              <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                <button
+                  onClick={() => router.push('/week')}
+                  className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
+                  title="Vista mensual"
+                >
+                  📅
+                </button>
+                <button
+                  onClick={toggleDarkMode}
+                  className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
+                  title="Cambiar tema"
+                >
+                  {darkMode ? '☀️' : '🌙'}
+                </button>
+              </div>
+              <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
+                Calendar
+              </h1>
+              <div className="flex gap-1 items-center">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    if (user) {
+                      localStorage.setItem(`lastReadMessage_${user.id}`, new Date().toISOString());
+                      setUnreadCount(0);
+                    }
+                    router.push('/messages');
+                  }}
+                  className="relative bg-blue-500 text-white hover:bg-blue-600 border-blue-600 px-2 text-xs h-8"
+                >
+                  💬
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold text-[10px]">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Button>
+                
+                {/* Menú hamburguesa de perfil */}
+                <div className="relative profile-menu-container">
                   <button
-                    onClick={handleLogout}
-                    className="w-full px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    className="px-2 py-1 text-sm rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 h-8"
+                    title="Perfil y configuración"
                   >
-                    <span>🚪</span>
-                    <span className="font-medium">Cerrar sesión</span>
+                    ☰
                   </button>
+                  
+                  {showProfileMenu && (
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-xl z-50 overflow-hidden">
+                      {/* Perfil */}
+                      <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-500">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-700 flex items-center justify-center text-2xl">
+                            {user?.username.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-bold text-white">{user?.username}</div>
+                            <div className="text-xs text-white/80">Usuario #{user?.id}</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Última conexión */}
+                      <div className="px-4 py-3 border-b dark:border-gray-700">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Última conexión</div>
+                        <div className="text-sm text-gray-700 dark:text-gray-300">
+                          {new Date().toLocaleString('es-AR', { 
+                            timeZone: 'America/Argentina/Cordoba',
+                            day: '2-digit',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
+                      
+                      {/* Botón salir */}
+                      <button
+                        onClick={handleLogout}
+                        className="w-full px-4 py-3 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center gap-2"
+                      >
+                        <span>🚪</span>
+                        <span className="font-medium">Cerrar sesión</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-4 py-2 border-t dark:border-gray-700">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => changeDate(-1)}
+                disabled={isBeforeToday()}
+                className="dark:border-gray-600 dark:text-gray-200 h-8"
+              >
+                ← 
+              </Button>
+              <span className="font-medium text-sm capitalize text-center dark:text-gray-200">{formatDate(selectedDate)}</span>
+              <Button variant="outline" size="sm" onClick={() => changeDate(1)} className="dark:border-gray-600 dark:text-gray-200 h-8">
+                →
+              </Button>
             </div>
           </div>
-        </div>
-        <div className="flex items-center justify-between px-4 py-2 border-t dark:border-gray-700">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => changeDate(-1)}
-            disabled={isBeforeToday()}
-            className="dark:border-gray-600 dark:text-gray-200 h-8"
-          >
-            ← 
-          </Button>
-          <span className="font-medium text-sm capitalize text-center dark:text-gray-200">{formatDate(selectedDate)}</span>
-          <Button variant="outline" size="sm" onClick={() => changeDate(1)} className="dark:border-gray-600 dark:text-gray-200 h-8">
-            →
-          </Button>
-        </div>
-      </div>
 
-      <div className="p-4 space-y-4">
-        {/* Tu disponibilidad */}
-        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700">
+          {/* Desktop Header */}
+          <div className="hidden lg:block sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10 border-b border-border">
+            <div className="px-8 py-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold dark:text-gray-100">
+                  Calendario de Disponibilidad
+                </h2>
+                <Button 
+                  size="sm" 
+                  onClick={() => router.push('/week')}
+                  variant="outline"
+                >
+                  📅 Vista Mensual
+                </Button>
+              </div>
+              <div className="flex items-center justify-between">
+                <Button 
+                  variant="outline" 
+                  onClick={() => changeDate(-1)}
+                  disabled={isBeforeToday()}
+                  className="dark:border-gray-600 dark:text-gray-200"
+                >
+                  ← Día Anterior
+                </Button>
+                <span className="font-medium text-lg capitalize text-center dark:text-gray-200">{formatDate(selectedDate)}</span>
+                <Button 
+                  variant="outline" 
+                  onClick={() => changeDate(1)} 
+                  className="dark:border-gray-600 dark:text-gray-200"
+                >
+                  Día Siguiente →
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 lg:p-8 space-y-4">
+            {/* Desktop: Two column layout */}
+            <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-4 lg:space-y-0">
+              {/* Tu disponibilidad */}
+              <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg dark:text-gray-100">Tu disponibilidad</CardTitle>
@@ -619,9 +668,12 @@ export function CalendarView() {
             )}
           </CardContent>
         </Card>
+            </div>
 
-        {/* Botón del juego Quick Draw */}
-        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
+        {/* Desktop: Full width sections */}
+        <div className="space-y-4">
+          {/* Botón del juego Quick Draw */}
+          <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
           <CardContent className="p-4">
             <Button 
               onClick={() => router.push('/game')}
@@ -651,6 +703,7 @@ export function CalendarView() {
             </p>
           </CardContent>
         </Card>
+        </div>
       </div>
 
       {/* Bottom Sheet para agregar/editar eventos */}
@@ -813,6 +866,7 @@ export function CalendarView() {
         variant="danger"
       />
       </div>
-    </PageTransition>
+      </PageTransition>
+    </>
   );
 }

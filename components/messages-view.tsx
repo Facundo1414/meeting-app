@@ -24,7 +24,10 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { AudioPlayer as SmartAudioPlayer } from '@/components/audio-player';
 import { getOptimizedImageUrl } from '@/lib/image-utils';
-
+import { ChatHeader } from '@/components/chat-header';
+import { MessageBubble } from '@/components/message-bubble';
+import { MessageInputBar } from '@/components/message-input-bar';
+import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export function MessagesView() {
@@ -954,51 +957,30 @@ export function MessagesView() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-3 sticky top-0 z-10">
-        <div className="flex flex-col">
-          <div className="flex items-center justify-between mb-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push('/calendar')}
-              className="dark:border-gray-600 dark:text-gray-200 px-2 h-8"
-            >
-              ←
-            </Button>
-            <h1 className="text-lg font-bold dark:text-gray-100">Mensajes</h1>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={toggleDarkMode}
-                className="px-2 py-1.5 text-sm rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
-                title="Cambiar tema"
-              >
-                {darkMode ? '☀️' : '🌙'}
-              </button>
-            </div>
-          </div>
-          {/* Online status row */}
-          <div className="text-center mt-1">
-            {otherUserOnline && (
-              <div className="text-xs text-green-500 dark:text-green-400 flex items-center justify-center gap-1">
-                <span className="w-2 h-2 bg-green-500 dark:bg-green-400 rounded-full animate-pulse"></span>
-                En línea
-              </div>
-            )}
-            {!otherUserOnline && otherUserLastSeen && (
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {formatLastSeen(otherUserLastSeen)}
-              </div>
-            )}
-          </div>
-        </div>
+    <>
+      <DesktopSidebar 
+        user={user}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onLogout={handleLogout}
+      />
+      
+      <div className="min-h-screen bg-[#111B21] flex flex-col lg:ml-64">
+      {/* Header - Sticky */}
+      <div className="sticky top-0 z-30 bg-[#111B21]">
+        <ChatHeader
+          userName={user?.id === '1' ? 'Usuario 2' : 'Usuario 1'}
+          userStatus={otherUserOnline ? 'En línea' : otherUserLastSeen ? formatLastSeen(otherUserLastSeen) : undefined}
+          isOnline={otherUserOnline}
+          onBack={() => router.push('/calendar')}
+          onMoreOptions={() => setShowProfileMenu(!showProfileMenu)}
+        />
       </div>
 
       {/* Messages */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3"
+        className="flex-1 overflow-y-auto p-4 lg:px-8 space-y-3 max-w-5xl lg:mx-auto w-full"
         onScroll={handleScroll}
       >
         {/* Button to load older messages (estilo Telegram) */}
@@ -1029,194 +1011,156 @@ export function MessagesView() {
         {messages.map((msg, index) => {
           const previousMsg = index > 0 ? messages[index - 1] : null;
           const showDateSeparator = shouldShowDateSeparator(msg, previousMsg);
+          const isOwn = msg.senderId === user?.id;
+          const repliedMsg = msg.replyToId ? messages.find(m => m.id === msg.replyToId) : null;
+          
+          // Convert reactions array to Record<string, string[]> format
+          const reactionsRecord: Record<string, string[]> = {};
+          (msg.reactions || []).forEach((reaction: { userId: string; emoji: string }) => {
+            if (!reactionsRecord[reaction.emoji]) {
+              reactionsRecord[reaction.emoji] = [];
+            }
+            reactionsRecord[reaction.emoji].push(reaction.userId);
+          });
           
           return (
             <div key={msg.id}>
               {/* Separador de fecha */}
               {showDateSeparator && (
                 <div className="flex justify-center my-3">
-                  <div className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-3 py-1 rounded-full">
+                  <div className="bg-[#202C33] text-[#8696A0] text-xs px-3 py-1 rounded-md">
                     {getDateSeparator(msg.timestamp)}
                   </div>
                 </div>
               )}
               
               {/* Mensaje */}
-              <div
-                className={`flex relative items-center gap-1 ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
-                data-message-options
+              <MessageBubble
+                message={msg.message || ''}
+                timestamp={msg.timestamp}
+                isOwnMessage={isOwn}
+                status={isOwn ? ((msg.readBy || []).length > 1 ? 'read' : 'sent') : undefined}
+                isEdited={!!msg.editedAt}
+                reactions={reactionsRecord}
+                replyTo={repliedMsg ? {
+                  sender: repliedMsg.senderUsername,
+                  message: repliedMsg.message || (repliedMsg.mediaType ? `📎 ${repliedMsg.mediaType}` : 'Mensaje')
+                } : undefined}
+                onDoubleTap={() => !msg.id.startsWith('temp-') && handleDoubleTap(msg)}
+                onReactionClick={(emoji) => handleReaction(msg.id, emoji)}
               >
-            {/* Botón de opciones - izquierda para mensajes propios */}
-            {!msg.id.startsWith('temp-') && msg.senderId === user?.id && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(showMenu === msg.id ? null : msg.id);
-                }}
-                className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-200 dark:active:bg-gray-700 shrink-0"
-                aria-label="Opciones"
-              >
-                <span className="text-base text-gray-600 dark:text-gray-300">⋯</span>
-              </button>
-            )}
-            
-            <div
-              className={`max-w-[75%] rounded-lg p-3 relative select-none ${
-                msg.senderId === user?.id
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white dark:bg-gray-700 border dark:border-gray-600 dark:text-gray-100'
-              }`}
-              onClick={() => !msg.id.startsWith('temp-') && handleDoubleTap(msg)}
-            >
-              {/* Reply reference */}
-              {msg.replyToId && (() => {
-                const repliedMsg = messages.find(m => m.id === msg.replyToId);
-                if (!repliedMsg) return null;
-                return (
-                  <div className="bg-black/10 dark:bg-white/10 border-l-2 border-white/50 pl-2 py-1 mb-2 rounded text-xs opacity-80">
-                    <div className="font-semibold">{repliedMsg.senderUsername}</div>
-                    <div className="truncate">{repliedMsg.message || (repliedMsg.mediaType ? `📎 ${repliedMsg.mediaType}` : 'Mensaje')}</div>
+                {/* Media content */}
+                {msg.mediaUrl && (
+                  <div className="mb-2">
+                    {msg.mediaType === 'image' ? (
+                      <img 
+                        src={msg.mediaUrl}
+                        alt="Imagen" 
+                        className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        style={{ maxHeight: '400px', minHeight: '100px', objectFit: 'contain' }}
+                        loading="lazy"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFullScreenImage(msg.mediaUrl || null);
+                        }}
+                        onError={(e) => {
+                          console.error('Error loading image:', msg.mediaUrl);
+                        }}
+                      />
+                    ) : msg.mediaType === 'video' ? (
+                      <video 
+                        src={msg.mediaUrl} 
+                        controls 
+                        className="max-w-full rounded-lg max-h-80"
+                      />
+                    ) : msg.mediaType === 'audio' ? (
+                      <SmartAudioPlayer 
+                        src={msg.mediaUrl} 
+                        isOwn={isOwn}
+                      />
+                    ) : null}
                   </div>
-                );
-              })()}
-              {msg.mediaUrl && (
-                <div className="mb-2">
-                  {msg.mediaType === 'image' ? (
-                    <img 
-                      src={msg.mediaUrl}
-                      alt="Imagen" 
-                      className="w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                      style={{ maxHeight: '400px', minHeight: '100px', objectFit: 'contain' }}
-                      loading="lazy"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFullScreenImage(msg.mediaUrl || null);
-                      }}
-                      onError={(e) => {
-                        console.error('Error loading image:', msg.mediaUrl);
-                      }}
-                    />
-                  ) : msg.mediaType === 'video' ? (
-                    <video 
-                      src={msg.mediaUrl} 
-                      controls 
-                      className="max-w-full rounded-lg max-h-80"
-                    />
-                  ) : msg.mediaType === 'audio' ? (
-                    <SmartAudioPlayer 
-                      src={msg.mediaUrl} 
-                      isOwn={msg.senderId === user?.id}
-                    />
-                  ) : null}
+                )}
+              </MessageBubble>
+
+              {/* Botón de opciones - adaptado */}
+              {!msg.id.startsWith('temp-') && (
+                <div className={`flex ${isOwn ? 'justify-start' : 'justify-end'} px-2`}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMenu(showMenu === msg.id ? null : msg.id);
+                    }}
+                    className="w-7 h-7 flex items-center justify-center rounded-full opacity-0 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-[#202C33] shrink-0"
+                    aria-label="Opciones"
+                  >
+                    <span className="text-base text-[#8696A0]">⋯</span>
+                  </button>
                 </div>
               )}
-              {msg.message && <div className="wrap-break-word">{msg.message}</div>}
-              <div className="text-xs opacity-70 mt-1 flex items-center gap-1">
-                {formatTime(msg.timestamp)}
-                {msg.editedAt && <span className="text-xs opacity-60">(editado)</span>}
-                {msg.senderId === user?.id && (
-                  <span>
-                    {(msg.readBy || []).length > 1 ? (
-                      <span className="text-green-300" title={`Leído por ${msg.readBy?.length} personas`}>✓✓</span>
-                    ) : (
-                      <span className="opacity-50" title="Enviado">✓✓</span>
-                    )}
-                  </span>
-                )}
-              </div>
-              {/* Reacciones del mensaje - compactas en la esquina */}
-              {msg.reactions && msg.reactions.length > 0 && (
-                <div className={`absolute -bottom-2 ${msg.senderId === user?.id ? 'left-2' : 'right-2'} flex gap-0.5`}>
-                  {msg.reactions.map((reaction, idx) => (
+            
+              {/* Menú contextual */}
+              {showMenu === msg.id && (
+                <div className={`absolute top-0 ${
+                  isOwn ? 'left-8' : 'right-8'
+                } bg-[#202C33] rounded-lg shadow-xl border border-[#2A3942] py-1 min-w-40 z-50`}>
+                  <button
+                    onClick={() => setShowReactions(msg.id)}
+                    className="w-full px-4 py-2 text-left text-sm text-[#E9EDEF] hover:bg-[#2A3942] flex items-center gap-2"
+                  >
+                    😊 Reaccionar
+                  </button>
+                  <button
+                    onClick={() => handleReplyTo(msg)}
+                    className="w-full px-4 py-2 text-left text-sm text-[#E9EDEF] hover:bg-[#2A3942] flex items-center gap-2"
+                  >
+                    ↩️ Responder
+                  </button>
+                  <button
+                    onClick={() => handleCopyMessage(msg.message)}
+                    className="w-full px-4 py-2 text-left text-sm text-[#E9EDEF] hover:bg-[#2A3942] flex items-center gap-2"
+                  >
+                    📋 Copiar
+                  </button>
+                  {isOwn && (
                     <button
-                      key={idx}
-                      onClick={() => handleReaction(msg.id, reaction.emoji)}
-                      className="text-xs leading-none bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded-full shadow-md border border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform"
-                      title={reaction.userId === user?.id ? 'Quitar tu reacción' : `Reacción de ${reaction.userId === '1' ? 'Facu' : 'Bren'}`}
+                      onClick={() => handleEditMessage(msg)}
+                      className="w-full px-4 py-2 text-left text-sm text-[#E9EDEF] hover:bg-[#2A3942] flex items-center gap-2"
                     >
-                      {reaction.emoji}
+                      ✏️ Editar
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      handleDeleteMessage(msg.id, msg.mediaUrl);
+                      setShowMenu(null);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-[#2A3942] flex items-center gap-2"
+                  >
+                    🗑️ Eliminar
+                  </button>
+                </div>
+              )}
+              
+              {/* Selector de reacciones */}
+              {showReactions === msg.id && (
+                <div 
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-[#202C33] rounded-full shadow-2xl border border-[#2A3942] px-3 py-2 z-50 flex gap-2"
+                  data-reactions-picker
+                >
+                  {['❤️', '👍', '😂', '😮', '😢', '🙏'].map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => handleReaction(msg.id, emoji)}
+                      className="text-2xl hover:scale-125 transition-transform active:scale-110"
+                    >
+                      {emoji}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            
-            {/* Botón de opciones - derecha para mensajes del otro usuario */}
-            {!msg.id.startsWith('temp-') && msg.senderId !== user?.id && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(showMenu === msg.id ? null : msg.id);
-                }}
-                className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 active:bg-gray-200 dark:active:bg-gray-700 shrink-0"
-                aria-label="Opciones"
-              >
-                <span className="text-base text-gray-600 dark:text-gray-300">⋯</span>
-              </button>
-            )}
-            
-            {/* Menú contextual */}
-            {showMenu === msg.id && (
-              <div className={`absolute top-0 ${
-                msg.senderId === user?.id ? 'left-8' : 'right-8'
-              } bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-1 min-w-40 z-50`}>
-                <button
-                  onClick={() => setShowReactions(msg.id)}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                >
-                  😊 Reaccionar
-                </button>
-                <button
-                  onClick={() => handleReplyTo(msg)}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                >
-                  ↩️ Responder
-                </button>
-                <button
-                  onClick={() => handleCopyMessage(msg.message)}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                >
-                  📋 Copiar
-                </button>
-                {msg.senderId === user?.id && (
-                  <button
-                    onClick={() => handleEditMessage(msg)}
-                    className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                  >
-                    ✏️ Editar
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    handleDeleteMessage(msg.id, msg.mediaUrl);
-                    setShowMenu(null);
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                >
-                  🗑️ Eliminar
-                </button>
-              </div>
-            )}
-            {/* Selector de reacciones */}
-            {showReactions === msg.id && (
-              <div 
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-full shadow-2xl border dark:border-gray-700 px-3 py-2 z-50 flex gap-2"
-                data-reactions-picker
-              >
-                {['❤️', '👍', '😂', '😮', '😢', '🙏'].map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={() => handleReaction(msg.id, emoji)}
-                    className="text-2xl hover:scale-125 transition-transform active:scale-110"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-            </div>
-          </div>
-        );
+          );
         })}
         <div ref={messagesEndRef} />        
         {/* Indicador de escribiendo */}
@@ -1244,106 +1188,52 @@ export function MessagesView() {
         />
       )}
 
-      {/* Input area */}
-      <div className="bg-white dark:bg-gray-800 border-t dark:border-gray-700 p-3">
-        {/* Reply preview */}
-        {replyTo && (
-          <div className="mb-2 bg-gray-100 dark:bg-gray-700 border-l-4 border-blue-500 p-2 rounded flex justify-between items-center">
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-blue-600 dark:text-blue-400 font-semibold">Respondiendo a {replyTo.sender}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-300 truncate">{replyTo.message}</div>
-            </div>
-            <button
-              onClick={cancelReply}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 ml-2"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        
-        {/* Edit preview */}
-        {editingMessage && (
-          <div className="mb-2 bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500 p-2 rounded flex justify-between items-center">
-            <div className="flex-1">
-              <div className="text-xs text-yellow-700 dark:text-yellow-400 font-semibold">✏️ Editando mensaje</div>
-            </div>
-            <button
-              onClick={cancelEdit}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 ml-2"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Recording UI */}
-        {isRecording && (
-          <div className="mb-3 bg-red-50 dark:bg-red-950 border-2 border-red-500 dark:border-red-600 rounded-lg p-3 flex items-center gap-3">
-            <div className="flex items-center gap-2 flex-1">
-              <div className="w-3 h-3 bg-red-500 dark:bg-red-400 rounded-full animate-pulse"></div>
-              <span className="text-red-700 dark:text-red-300 font-semibold">Grabando audio</span>
-              <span className="text-red-600 dark:text-red-200 font-mono">{formatRecordingTime(recordingTime)}</span>
-            </div>
-            <button
-              onClick={cancelRecording}
-              className="text-red-600 hover:text-red-800 dark:text-red-300 dark:hover:text-red-100 font-bold text-lg"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Audio preview */}
-        {audioBlob && !isRecording && (
-          <div className="mb-3 bg-blue-50 dark:bg-blue-950 border-2 border-blue-500 dark:border-blue-600 rounded-lg p-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-blue-700 dark:text-blue-300 font-semibold">🎤 Audio grabado ({formatRecordingTime(recordingTime)})</span>
-              <button
-                onClick={cancelRecording}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-100 font-bold text-lg"
-              >
-                ✕
-              </button>
-            </div>
-            <audio src={URL.createObjectURL(audioBlob)} controls crossOrigin="anonymous" className="w-full mb-2" />
-            <div className="flex gap-2">
-              <Button 
-                size="sm" 
-                onClick={sendAudioMessage}
-                disabled={uploading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {uploading ? '📤' : '✅ Enviar'}
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={cancelRecording}
-                className="dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-950"
-              >
-                🗑️ Descartar
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {previewUrl && (
-          <div className="mb-3 relative inline-block">
-            {selectedFile?.type.startsWith('image/') ? (
-              <img src={previewUrl} alt="Preview" className="max-h-32 rounded-lg" />
-            ) : (
-              <video src={previewUrl} className="max-h-32 rounded-lg" />
-            )}
-            <button
-              onClick={removeSelectedFile}
-              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
-            >
-              ×
-            </button>
-          </div>
-        )}
-        <div className="flex gap-2 items-end relative">
+      {/* Input area - Sticky */}
+      <div className="sticky bottom-0 z-30">
+        <MessageInputBar
+          value={newMessage}
+          onChange={setNewMessage}
+          onSend={handleSend}
+          onAttach={() => {
+            if (fileInputRef.current) {
+              fileInputRef.current.removeAttribute('capture');
+              fileInputRef.current.click();
+              setTimeout(() => {
+                if (fileInputRef.current) {
+                  fileInputRef.current.setAttribute('capture', 'environment');
+                }
+              }, 100);
+            }
+          }}
+          onCamera={handleCameraCapture}
+          onVoiceStart={startRecording}
+          onVoiceStop={stopRecording}
+          onVoiceCancel={cancelRecording}
+          isRecording={isRecording}
+          recordingTime={recordingTime}
+          disabled={uploading}
+          placeholder={
+            editingMessage 
+              ? "Editar mensaje..." 
+              : selectedFile 
+                ? "Mensaje opcional..." 
+                : "Escribe un mensaje..."
+          }
+          replyTo={replyTo ? {
+            senderName: replyTo.sender,
+            message: replyTo.message
+          } : undefined}
+          onCancelReply={cancelReply}
+          editingMessage={editingMessage ? "Editando mensaje" : undefined}
+          onCancelEdit={cancelEdit}
+          audioBlob={audioBlob}
+          onSendAudio={sendAudioMessage}
+          mediaPreview={previewUrl ? {
+            url: previewUrl,
+            type: selectedFile?.type.startsWith('image/') ? 'image' : 'video',
+            onRemove: removeSelectedFile
+          } : undefined}
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -1352,110 +1242,7 @@ export function MessagesView() {
             onChange={handleFileSelect}
             className="hidden"
           />
-          
-          {/* Botón principal de adjuntos con menú desplegable */}
-          <div className="relative">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-              disabled={uploading || isRecording || !!audioBlob}
-              className="dark:border-gray-600 dark:text-gray-200"
-              title="Adjuntar"
-            >
-              ➕
-            </Button>
-
-            {/* Menú desplegable de opciones */}
-            {showAttachmentMenu && !isRecording && !audioBlob && (
-              <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg shadow-lg p-2 min-w-45 z-50">
-                <button
-                  onClick={() => {
-                    startRecording();
-                    setShowAttachmentMenu(false);
-                  }}
-                  disabled={uploading || !!selectedFile}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-200"
-                >
-                  🎤 <span>Mensaje de voz</span>
-                </button>
-                <button
-                  onClick={() => {
-                    handleCameraCapture();
-                    setShowAttachmentMenu(false);
-                  }}
-                  disabled={uploading}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-200"
-                >
-                  📷 <span>Cámara</span>
-                </button>
-                <button
-                  onClick={() => {
-                    if (fileInputRef.current) {
-                      fileInputRef.current.removeAttribute('capture');
-                      fileInputRef.current.click();
-                      setTimeout(() => {
-                        if (fileInputRef.current) {
-                          fileInputRef.current.setAttribute('capture', 'environment');
-                        }
-                      }, 100);
-                    }
-                    setShowAttachmentMenu(false);
-                  }}
-                  disabled={uploading}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-200"
-                >
-                  📎 <span>Galería</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Stop recording button cuando está grabando */}
-          {isRecording && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={stopRecording}
-              className="dark:border-gray-600 dark:text-gray-200 bg-red-100 dark:bg-red-900/30"
-              title="Detener grabación"
-            >
-              ⏹️
-            </Button>
-          )}
-
-          <textarea
-            ref={textareaRef}
-            value={newMessage}
-            onChange={(e) => {
-              setNewMessage(e.target.value);
-              handleTyping();
-              // Auto-expand
-              if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
-                textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
-              }
-            }}
-            onKeyPress={handleKeyPress}
-            placeholder={
-              editingMessage 
-                ? "Editar mensaje..." 
-                : selectedFile 
-                  ? "Mensaje opcional..." 
-                  : "Escribe un mensaje..."
-            }
-            className="flex-1 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400 rounded-md border border-gray-300 px-3 py-2 resize-none min-h-10 max-h-30"
-            disabled={uploading || isRecording || !!audioBlob}
-            rows={1}
-          />
-          <Button 
-            onClick={handleSend} 
-            disabled={(!newMessage.trim() && !selectedFile) || uploading || isRecording || !!audioBlob}
-            title={editingMessage ? 'Guardar' : 'Enviar'}
-          >
-            {uploading ? '⏳' : editingMessage ? '💾' : '✈️'}
-          </Button>
-        </div>
+        </MessageInputBar>
       </div>
 
       {/* Confirm Dialog para eliminar mensaje */}
@@ -1494,6 +1281,7 @@ export function MessagesView() {
           />
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
