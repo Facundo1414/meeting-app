@@ -61,7 +61,7 @@ export const MessageBubble = memo(function MessageBubble({
   };
 
   return (
-    <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-2 px-2 md:px-4`}>
+    <div className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-1 px-2 md:px-4`}>
       <div className={`relative max-w-[85%] md:max-w-[65%] ${isOwnMessage ? 'ml-auto' : 'mr-auto'}`}>
         {/* Reply reference */}
         {replyTo && (

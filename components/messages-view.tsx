@@ -1078,21 +1078,7 @@ export function MessagesView() {
                 )}
               </MessageBubble>
 
-              {/* Botón de opciones - adaptado */}
-              {!msg.id.startsWith('temp-') && (
-                <div className={`flex ${isOwn ? 'justify-start' : 'justify-end'} px-2`}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowMenu(showMenu === msg.id ? null : msg.id);
-                    }}
-                    className="w-7 h-7 flex items-center justify-center rounded-full opacity-50 hover:opacity-100 active:opacity-100 lg:opacity-0 lg:hover:opacity-100 transition-opacity hover:bg-[#202C33] shrink-0"
-                    aria-label="Opciones"
-                  >
-                    <span className="text-base text-[#8696A0]">⋯</span>
-                  </button>
-                </div>
-              )}
+              {/* Botón de opciones - oculto, usar long press */}
             
               {/* Menú contextual */}
               {showMenu === msg.id && (
