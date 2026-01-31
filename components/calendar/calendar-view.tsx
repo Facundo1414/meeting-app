@@ -17,6 +17,7 @@ import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { TimeRangePicker } from '@/components/ui/time-picker';
 import { QuickActions } from '@/components/quick-actions';
+import { CalendarStats, CalendarStatsButton } from '@/components/calendar-stats';
 import { CalendarHeader } from './calendar-header';
 import { SlotCard } from './slot-card';
 
@@ -40,6 +41,7 @@ export function CalendarView() {
   const [deleteSlotId, setDeleteSlotId] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [quickActionsExpanded, setQuickActionsExpanded] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const router = useRouter();
   const isChangingDate = useRef(false);
 
@@ -337,6 +339,11 @@ export function CalendarView() {
         />
 
         <div className="p-4 space-y-4">
+          {/* Stats Button */}
+          <div className="flex justify-end">
+            <CalendarStatsButton onClick={() => setShowStats(true)} />
+          </div>
+
           {/* Quick Actions */}
           <QuickActions
             user={user}
@@ -434,14 +441,14 @@ export function CalendarView() {
           onClose={cancelEdit}
           title={editingSlotId ? 'Editar Evento' : 'Nuevo Evento'}
         >
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div>
               <label className="text-sm font-medium mb-2 block">Tipo de evento</label>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
                   variant={eventType === 'unavailable' ? 'default' : 'outline'}
-                  className={eventType === 'unavailable' ? 'bg-red-500 hover:bg-red-600' : ''}
+                  className={`h-9 text-sm ${eventType === 'unavailable' ? 'bg-red-500 hover:bg-red-600' : ''}`}
                   onClick={() => setEventType('unavailable')}
                   size="sm"
                 >
@@ -450,7 +457,7 @@ export function CalendarView() {
                 <Button
                   type="button"
                   variant={eventType === 'plan' ? 'default' : 'outline'}
-                  className={eventType === 'plan' ? 'bg-green-500 hover:bg-green-600' : ''}
+                  className={`h-9 text-sm ${eventType === 'plan' ? 'bg-green-500 hover:bg-green-600' : ''}`}
                   onClick={() => setEventType('plan')}
                   size="sm"
                 >
@@ -459,7 +466,7 @@ export function CalendarView() {
                 <Button
                   type="button"
                   variant={eventType === 'meeting' ? 'default' : 'outline'}
-                  className={eventType === 'meeting' ? 'bg-blue-500 hover:bg-blue-600' : ''}
+                  className={`h-9 text-sm ${eventType === 'meeting' ? 'bg-blue-500 hover:bg-blue-600' : ''}`}
                   onClick={() => setEventType('meeting')}
                   size="sm"
                 >
@@ -468,7 +475,7 @@ export function CalendarView() {
                 <Button
                   type="button"
                   variant={eventType === 'tentative' ? 'default' : 'outline'}
-                  className={eventType === 'tentative' ? 'bg-yellow-500 hover:bg-yellow-600' : ''}
+                  className={`h-9 text-sm ${eventType === 'tentative' ? 'bg-yellow-500 hover:bg-yellow-600' : ''}`}
                   onClick={() => setEventType('tentative')}
                   size="sm"
                 >
@@ -483,8 +490,9 @@ export function CalendarView() {
                 setEndHour('24');
               }}
               variant="outline"
-              className="w-full border-dashed"
+              className="w-full border-dashed h-9 text-sm"
               type="button"
+              size="sm"
             >
               🕐 Todo el día (00:00 - 24:00)
             </Button>
@@ -503,7 +511,7 @@ export function CalendarView() {
                 variant="outline"
                 size="sm"
                 type="button"
-                className="text-xs"
+                className="text-xs h-8"
               >
                 Mañana
               </Button>
@@ -512,7 +520,7 @@ export function CalendarView() {
                 variant="outline"
                 size="sm"
                 type="button"
-                className="text-xs"
+                className="text-xs h-8"
               >
                 Tarde
               </Button>
@@ -521,7 +529,7 @@ export function CalendarView() {
                 variant="outline"
                 size="sm"
                 type="button"
-                className="text-xs"
+                className="text-xs h-8"
               >
                 Noche
               </Button>
@@ -531,10 +539,11 @@ export function CalendarView() {
               placeholder="Nota opcional..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              className="h-9"
             />
 
             {validationError && (
-              <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
+              <div className="p-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
                 <p className="text-sm text-red-700 dark:text-red-300 text-center">
                   ⚠️ {validationError}
                 </p>
@@ -544,8 +553,8 @@ export function CalendarView() {
             <LoadingButton 
               type="button"
               onClick={saveSlot} 
-              className="w-full" 
-              size="lg"
+              className="w-full h-10" 
+              size="default"
               isLoading={isSaving}
               loadingText="Guardando..."
             >
@@ -567,6 +576,14 @@ export function CalendarView() {
           confirmText="Eliminar"
           cancelText="Cancelar"
           variant="danger"
+        />
+
+        {/* Calendar Stats Modal */}
+        <CalendarStats
+          slots={slots}
+          userId={user.id}
+          isOpen={showStats}
+          onClose={() => setShowStats(false)}
         />
       </div>
     </div>

@@ -342,3 +342,67 @@ export function filterByType(
   if (type === "all") return items;
   return items.filter((item) => item.type === type);
 }
+
+// ========== FAVORITOS ==========
+
+const FAVORITES_KEY = "gallery_favorites";
+
+/**
+ * Obtiene los IDs de items favoritos desde localStorage
+ */
+export function getFavorites(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const stored = localStorage.getItem(FAVORITES_KEY);
+    if (stored) {
+      return new Set(JSON.parse(stored));
+    }
+  } catch (error) {
+    console.error("Error reading favorites:", error);
+  }
+  return new Set();
+}
+
+/**
+ * Guarda los favoritos en localStorage
+ */
+function saveFavorites(favorites: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favorites]));
+  } catch (error) {
+    console.error("Error saving favorites:", error);
+  }
+}
+
+/**
+ * Agrega o quita un item de favoritos
+ */
+export function toggleFavorite(itemId: string): boolean {
+  const favorites = getFavorites();
+  const isFavorite = favorites.has(itemId);
+
+  if (isFavorite) {
+    favorites.delete(itemId);
+  } else {
+    favorites.add(itemId);
+  }
+
+  saveFavorites(favorites);
+  return !isFavorite; // Retorna el nuevo estado
+}
+
+/**
+ * Verifica si un item es favorito
+ */
+export function isFavorite(itemId: string): boolean {
+  return getFavorites().has(itemId);
+}
+
+/**
+ * Filtra items que son favoritos
+ */
+export function filterFavorites(items: GalleryItem[]): GalleryItem[] {
+  const favorites = getFavorites();
+  return items.filter((item) => favorites.has(item.id));
+}

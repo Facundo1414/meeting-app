@@ -21,7 +21,7 @@ import {
   uploadMedia
 } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { AudioPlayer as SmartAudioPlayer } from '@/components/audio-player';
 import { getOptimizedImageUrl } from '@/lib/image-utils';
 import { ChatHeader } from '@/components/chat-header';
@@ -29,6 +29,8 @@ import { MessageBubble } from '@/components/message-bubble';
 import { MessageInputBar } from '@/components/message-input-bar';
 import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { MessageSearch } from '@/components/message-search';
+import { TypingBubble } from '@/components/typing-indicator';
 
 export function MessagesView() {
   const [user, setUser] = useState<User | null>(null);
@@ -56,6 +58,7 @@ export function MessagesView() {
   const [deleteMessageData, setDeleteMessageData] = useState<{id: string; mediaUrl?: string} | null>(null);
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   const [imageScale, setImageScale] = useState(1);
+  const [showSearch, setShowSearch] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -968,7 +971,24 @@ export function MessagesView() {
           userName={user?.id === '1' ? 'Usuario 2' : 'Usuario 1'}
           userStatus={otherUserOnline ? 'En línea' : otherUserLastSeen ? formatLastSeen(otherUserLastSeen) : undefined}
           isOnline={otherUserOnline}
+          isTyping={isOtherUserTyping}
           onBack={() => router.push('/calendar')}
+          onSearch={() => setShowSearch(true)}
+        />
+        
+        {/* Search Component */}
+        <MessageSearch
+          messages={messages}
+          isOpen={showSearch}
+          onClose={() => setShowSearch(false)}
+          onResultClick={(messageId) => {
+            const element = document.getElementById(`message-${messageId}`);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              element.classList.add('bg-yellow-500/20');
+              setTimeout(() => element.classList.remove('bg-yellow-500/20'), 2000);
+            }
+          }}
         />
       </div>
 
@@ -1019,7 +1039,7 @@ export function MessagesView() {
           });
           
           return (
-            <div key={msg.id}>
+            <div key={msg.id} id={`message-${msg.id}`} className="transition-colors duration-500">
               {/* Separador de fecha */}
               {showDateSeparator && (
                 <div className="flex justify-center my-3">
@@ -1160,18 +1180,11 @@ export function MessagesView() {
           );
         })}
         <div ref={messagesEndRef} />        
-        {/* Indicador de escribiendo */}
-        {isOtherUserTyping && (
-          <div className="flex justify-start">
-            <div className="bg-white dark:bg-gray-700 border dark:border-gray-600 rounded-lg px-3 py-2">
-              <div className="flex gap-1 items-center">
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Indicador de escribiendo mejorado */}
+        <TypingBubble 
+          isTyping={isOtherUserTyping} 
+          userName={user?.id === '1' ? 'Usuario 2' : 'Usuario 1'} 
+        />
       </div>
 
       {/* Overlay para cerrar menú */}

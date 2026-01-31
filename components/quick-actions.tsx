@@ -16,7 +16,7 @@ import {
   X,
   Check
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 
 interface QuickAction {
   id: string;
@@ -121,9 +121,9 @@ export function QuickActions({
         note: action.label,
       });
       
-      toast.success(`${action.emoji} Marcado: ${action.label}`, {
-        description: `${action.startHour.toString().padStart(2, '0')}:00 - ${action.endHour.toString().padStart(2, '0')}:00`,
-      });
+      toast.calendar(`${action.emoji} Marcado: ${action.label}`, 
+        `${action.startHour.toString().padStart(2, '0')}:00 - ${action.endHour.toString().padStart(2, '0')}:00`
+      );
       
       onActionComplete();
     } catch (error) {

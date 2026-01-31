@@ -3,11 +3,13 @@
 import { memo } from 'react';
 import { User, ArrowLeft, MoreVertical, Video, Phone, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HeaderTypingIndicator } from '@/components/typing-indicator';
 
 interface ChatHeaderProps {
   userName: string;
   userStatus?: string;
   isOnline?: boolean;
+  isTyping?: boolean;
   onBack?: () => void;
   onVideoCall?: () => void;
   onVoiceCall?: () => void;
@@ -19,6 +21,7 @@ export const ChatHeader = memo(function ChatHeader({
   userName,
   userStatus,
   isOnline = false,
+  isTyping = false,
   onBack,
   onVideoCall,
   onVoiceCall,
@@ -56,11 +59,15 @@ export const ChatHeader = memo(function ChatHeader({
             <h2 className="text-[#E9EDEF] font-medium text-base truncate">
               {userName}
             </h2>
-            {userStatus && (
-              <p className={`text-xs truncate ${isOnline ? 'text-[#00A884]' : 'text-[#8696A0]'}`}>
-                {userStatus}
-              </p>
-            )}
+            <div className="h-4">
+              {isTyping ? (
+                <HeaderTypingIndicator isTyping={isTyping} />
+              ) : userStatus ? (
+                <p className={`text-xs truncate ${isOnline ? 'text-[#00A884]' : 'text-[#8696A0]'}`}>
+                  {userStatus}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
 

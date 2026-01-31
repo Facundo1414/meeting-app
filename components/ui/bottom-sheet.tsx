@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface BottomSheetProps {
   isOpen: boolean;
@@ -12,6 +12,15 @@ interface BottomSheetProps {
 }
 
 export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetProps) {
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const checkDesktop = () => setIsDesktop(window.innerWidth >= 768);
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -37,27 +46,33 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
           />
           
-          {/* Bottom Sheet */}
+          {/* Desktop: Centered Modal / Mobile: Bottom Sheet */}
           <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
+            initial={isDesktop ? { opacity: 0, scale: 0.95 } : { y: '100%' }}
+            animate={isDesktop ? { opacity: 1, scale: 1 } : { y: 0 }}
+            exit={isDesktop ? { opacity: 0, scale: 0.95 } : { y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 z-50 bg-background rounded-t-3xl shadow-2xl max-h-[90vh] overflow-hidden swipe-ignore"
+            className={`fixed z-50 bg-background shadow-2xl overflow-hidden swipe-ignore ${
+              isDesktop 
+                ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl w-full max-w-md max-h-[80vh]' 
+                : 'inset-x-0 bottom-0 rounded-t-3xl max-h-[90vh]'
+            }`}
             role="dialog"
           >
-            {/* Handle bar */}
-            <div className="flex justify-center pt-3 pb-2">
-              <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
-            </div>
+            {/* Handle bar - solo mobile */}
+            {!isDesktop && (
+              <div className="flex justify-center pt-3 pb-2">
+                <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full" />
+              </div>
+            )}
 
             {/* Header */}
             {title && (
-              <div className="flex items-center justify-between px-6 py-4 border-b">
-                <h2 className="text-xl font-semibold">{title}</h2>
+              <div className="flex items-center justify-between px-4 md:px-5 py-3 md:py-4 border-b">
+                <h2 className="text-lg md:text-xl font-semibold">{title}</h2>
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-muted rounded-full transition-colors"
+                  className="p-1.5 md:p-2 hover:bg-muted rounded-full transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -65,7 +80,9 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
             )}
 
             {/* Content */}
-            <div className="overflow-y-auto max-h-[calc(90vh-100px)] p-6">
+            <div className={`overflow-y-auto p-4 md:p-5 ${
+              isDesktop ? 'max-h-[calc(80vh-80px)]' : 'max-h-[calc(90vh-100px)]'
+            }`}>
               {children}
             </div>
           </motion.div>

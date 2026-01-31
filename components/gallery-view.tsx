@@ -3,16 +3,18 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { uploadMedia } from '@/lib/storage-supabase';
-import { getGalleryItems, filterByType, GalleryItem } from '@/lib/gallery-storage';
+import { getGalleryItems, filterByType, GalleryItem, toggleFavorite, getFavorites, filterFavorites } from '@/lib/gallery-storage';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/toast';
 import { ChunkedImage, ChunkedVideo, ChunkedAudio } from '@/components/chunked-media';
 import { ThumbnailImage } from '@/components/thumbnail-image';
 import { VideoThumbnail } from '@/components/video-thumbnail';
 import { CacheMonitor } from '@/components/cache-monitor';
 import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { User } from '@/lib/auth-supabase';
+import { Heart } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function GalleryView() {
   const router = useRouter();
@@ -22,6 +24,8 @@ export function GalleryView() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<GalleryItem | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video' | 'audio'>('all');
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [visibleItems, setVisibleItems] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -48,6 +52,7 @@ export function GalleryView() {
       return;
     }
     setUser(JSON.parse(userData));
+    setFavorites(getFavorites());
     
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
     setDarkMode(savedDarkMode);
@@ -102,10 +107,25 @@ export function GalleryView() {
     // Imagen cargada exitosamente
   };
 
-  const filteredItems = filterByType(items, filterType);
+  // Aplicar filtros: primero por tipo, luego por favoritos si está activo
+  let filteredItems = filterByType(items, filterType);
+  if (showFavorites) {
+    filteredItems = filterFavorites(filteredItems);
+  }
 
   // Mostrar los items cargados (sin paginación extra del lado cliente)
   const paginatedItems = filteredItems;
+  
+  // Handler para toggle de favoritos
+  const handleToggleFavorite = (itemId: string) => {
+    const newState = toggleFavorite(itemId);
+    setFavorites(getFavorites());
+    if (newState) {
+      toast.love('Añadido a favoritos');
+    } else {
+      toast.info('Eliminado de favoritos');
+    }
+  };
   
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
@@ -212,7 +232,7 @@ export function GalleryView() {
 
       console.log('Upload successful, mediaUrl:', mediaUrl);
       
-      toast.success('Archivo subido exitosamente');
+      toast.gallery('Archivo subido exitosamente', 'Se ha añadido a tu galería');
       
       // Recargar galería para mostrar el nuevo archivo
       const { items: media, hasMore: more } = await getGalleryItems(itemsPerPage, 0);
@@ -337,7 +357,7 @@ export function GalleryView() {
             <button
               onClick={() => setFilterType('all')}
               className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${
-                filterType === 'all' 
+                filterType === 'all' && !showFavorites
                   ? 'bg-blue-500 text-white' 
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
               }`}
@@ -345,9 +365,23 @@ export function GalleryView() {
               Todos ({items.length})
             </button>
             <button
-              onClick={() => setFilterType('image')}
+              onClick={() => {
+                setShowFavorites(!showFavorites);
+                if (!showFavorites) setFilterType('all');
+              }}
+              className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                showFavorites
+                  ? 'bg-rose-500 text-white' 
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+              }`}
+            >
+              <Heart className={`h-3.5 w-3.5 ${showFavorites ? 'fill-current' : ''}`} />
+              Favoritos ({favorites.size})
+            </button>
+            <button
+              onClick={() => { setFilterType('image'); setShowFavorites(false); }}
               className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${
-                filterType === 'image' 
+                filterType === 'image' && !showFavorites
                   ? 'bg-blue-500 text-white' 
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
               }`}
@@ -355,9 +389,9 @@ export function GalleryView() {
               📷 Fotos ({stats.images})
             </button>
             <button
-              onClick={() => setFilterType('video')}
+              onClick={() => { setFilterType('video'); setShowFavorites(false); }}
               className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${
-                filterType === 'video' 
+                filterType === 'video' && !showFavorites
                   ? 'bg-blue-500 text-white' 
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
               }`}
@@ -366,9 +400,9 @@ export function GalleryView() {
             </button>
             {stats.audios > 0 && (
               <button
-                onClick={() => setFilterType('audio')}
+                onClick={() => { setFilterType('audio'); setShowFavorites(false); }}
                 className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${
-                  filterType === 'audio' 
+                  filterType === 'audio' && !showFavorites
                     ? 'bg-blue-500 text-white' 
                     : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                 }`}
@@ -389,11 +423,13 @@ export function GalleryView() {
           </div>
         ) : paginatedItems.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-5xl mb-3">📷</div>
+            <div className="text-5xl mb-3">{showFavorites ? '❤️' : '📷'}</div>
             <p className="text-gray-500 dark:text-gray-400">
-              {filterType === 'all' 
-                ? 'No hay archivos multimedia aún.' 
-                : `No hay ${filterType === 'image' ? 'fotos' : filterType === 'video' ? 'videos' : 'audios'} aún.`}
+              {showFavorites 
+                ? 'No tienes favoritos aún. Toca el ❤️ en una foto para guardarla.'
+                : filterType === 'all' 
+                  ? 'No hay archivos multimedia aún.' 
+                  : `No hay ${filterType === 'image' ? 'fotos' : filterType === 'video' ? 'videos' : 'audios'} aún.`}
             </p>
             <Button 
               onClick={() => router.push('/messages')} 
@@ -457,6 +493,38 @@ export function GalleryView() {
                       <span className="text-xs text-gray-600 dark:text-gray-300">Audio</span>
                     </div>
                   ) : null}
+
+                  {/* Botón de favorito */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleFavorite(it.id);
+                    }}
+                    className="absolute top-1 right-1 p-1.5 rounded-full bg-black/40 hover:bg-black/60 transition-all z-10 group/fav"
+                  >
+                    <AnimatePresence mode="wait">
+                      {favorites.has(it.id) ? (
+                        <motion.div
+                          key="filled"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          exit={{ scale: 0 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                        >
+                          <Heart className="h-4 w-4 text-rose-500 fill-rose-500" />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="outline"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          exit={{ scale: 0 }}
+                        >
+                          <Heart className="h-4 w-4 text-white group-hover/fav:text-rose-300" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </button>
 
                   {/* Overlay con info */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-lg pointer-events-none">

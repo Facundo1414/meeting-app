@@ -79,7 +79,7 @@ export function SlotCard({ slot, isOwn, onEdit, onDelete }: SlotCardProps) {
               <div className="text-sm text-gray-700 dark:text-gray-300 mt-1">{slot.note}</div>
             )}
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1 items-center">
             <Button
               variant="ghost"
               size="sm"
