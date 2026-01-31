@@ -15,6 +15,8 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/empty-state';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { SyncIndicator } from '@/components/sync-indicator';
+import { TimeRangePicker } from '@/components/ui/time-picker';
+import { QuickActions } from '@/components/quick-actions';
 import { CalendarHeader } from './calendar-header';
 import { SlotCard } from './slot-card';
 
@@ -37,6 +39,7 @@ export function CalendarView() {
   const [isSaving, setIsSaving] = useState(false);
   const [deleteSlotId, setDeleteSlotId] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [quickActionsExpanded, setQuickActionsExpanded] = useState(false);
   const router = useRouter();
   const isChangingDate = useRef(false);
 
@@ -334,6 +337,15 @@ export function CalendarView() {
         />
 
         <div className="p-4 space-y-4">
+          {/* Quick Actions */}
+          <QuickActions
+            user={user}
+            selectedDate={selectedDate}
+            onActionComplete={loadSlots}
+            isExpanded={quickActionsExpanded}
+            onToggleExpand={() => setQuickActionsExpanded(!quickActionsExpanded)}
+          />
+
           {/* Tu disponibilidad */}
           <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700">
             <CardHeader className="pb-3">
@@ -477,38 +489,13 @@ export function CalendarView() {
               🕐 Todo el día (00:00 - 24:00)
             </Button>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium mb-1 block">Desde</label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="23"
-                  value={startHour}
-                  onChange={(e) => { setStartHour(e.target.value); setValidationError(null); }}
-                  className="w-full"
-                  placeholder="Ej: 9"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {startHour ? `${startHour.padStart(2, '0')}:00` : 'Hora'}
-                </p>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Hasta</label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="24"
-                  value={endHour}
-                  onChange={(e) => { setEndHour(e.target.value); setValidationError(null); }}
-                  className="w-full"
-                  placeholder="Ej: 18"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  {endHour ? `${endHour.padStart(2, '0')}:00` : 'Hora'}
-                </p>
-              </div>
-            </div>
+            {/* Visual Time Range Picker */}
+            <TimeRangePicker
+              startHour={parseInt(startHour) || 9}
+              endHour={parseInt(endHour) || 18}
+              onStartChange={(val) => { setStartHour(val.toString()); setValidationError(null); }}
+              onEndChange={(val) => { setEndHour(val.toString()); setValidationError(null); }}
+            />
             
             <div className="grid grid-cols-3 gap-2">
               <Button

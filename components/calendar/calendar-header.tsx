@@ -1,8 +1,10 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { User } from '@/lib/auth-supabase';
+import { CalendarDays } from 'lucide-react';
 
 interface CalendarHeaderProps {
   user: User;
@@ -37,6 +39,8 @@ export function CalendarHeader({
   formatDate,
   isBeforeToday,
 }: CalendarHeaderProps) {
+  const router = useRouter();
+  
   return (
     <div className="sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
       <div className="flex items-center justify-between p-2 gap-2">
@@ -47,6 +51,13 @@ export function CalendarHeader({
             title="Vista mensual"
           >
             📅
+          </button>
+          <button
+            onClick={() => router.push('/week-view')}
+            className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600 flex items-center gap-1"
+            title="Vista semanal"
+          >
+            <CalendarDays className="h-4 w-4" />
           </button>
           <button
             onClick={onToggleDarkMode}

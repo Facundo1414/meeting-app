@@ -99,14 +99,14 @@ export default function LandingPage() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/30 border-b border-white/5">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <diImage 
+          <div className="flex items-center gap-2">
+            <Image 
               src="/meetingapp.png" 
               alt="MeetingApp Logo" 
               width={36} 
               height={36}
               className="rounded-lg"
-            /art className="w-4 h-4 text-white" />
-            </div>
+            />
             <span className="font-bold text-lg">MeetingApp</span>
           </div>
           <Link 
@@ -316,18 +316,18 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-Image 
+
+      {/* Footer */}
+      <footer className="relative py-8 px-4 border-t border-white/5">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Image 
               src="/meetingapp.png" 
               alt="MeetingApp Logo" 
               width={24} 
               height={24}
               className="rounded-md"
-            /ssName="relative py-8 px-4 border-t border-white/5">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-              <Heart className="w-3 h-3 text-white" />
-            </div>
+            />
             <span className="font-semibold">MeetingApp</span>
           </div>
           <p className="text-sm text-white/40">
