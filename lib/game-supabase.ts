@@ -46,12 +46,36 @@ export interface GameSession {
   player1_score: number;
   player2_score: number;
   max_rounds: number;
-  round_time: number;
-  points_per_correct: number;
+  round_time?: number;
+  round_time_seconds?: number;
+  points_per_correct?: number;
   difficulty: "easy" | "medium" | "hard";
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Nuevos campos para timer sincronizado
+  round_start_time?: string;
+  round_end_time?: string;
+}
+
+// Interfaz para strokes en tiempo real
+export interface GameStroke {
+  id: string;
+  session_id: string;
+  round: number;
+  stroke_data: StrokeData;
+  sequence: number;
+  created_at: string;
+}
+
+export interface StrokeData {
+  x: number;
+  y: number;
+  lastX: number | null;
+  lastY: number | null;
+  color: string;
+  size: number;
+  type: "draw" | "clear";
 }
 
 export interface PlayerStats {
@@ -78,7 +102,7 @@ export async function saveGameHistoryToSupabase(
   player2Score: number,
   roundsPlayed: number,
   difficulty: "easy" | "medium" | "hard",
-  durationSeconds: number
+  durationSeconds: number,
 ) {
   try {
     const { data, error } = await supabase
@@ -151,7 +175,7 @@ export async function sendGameInvitation(
     roundTime: number;
     pointsPerCorrect: number;
     difficulty: "easy" | "medium" | "hard";
-  }
+  },
 ) {
   try {
     // Check for existing pending invitation
@@ -215,7 +239,7 @@ export async function getGameInvitations(userId: string) {
 
 export async function updateInvitationStatus(
   invitationId: string,
-  status: "accepted" | "rejected" | "expired"
+  status: "accepted" | "rejected" | "expired",
 ) {
   try {
     const { data, error } = await supabase
@@ -259,7 +283,7 @@ export async function cancelGameInvitation(invitationId: string) {
 // Subscribe to invitations in real-time
 export function subscribeToInvitations(
   userId: string,
-  callback: (invitation: GameInvitation) => void
+  callback: (invitation: GameInvitation) => void,
 ) {
   const channel = supabase
     .channel("game-invitations")
@@ -273,7 +297,7 @@ export function subscribeToInvitations(
       },
       (payload) => {
         callback(mapInvitation(payload.new));
-      }
+      },
     )
     .on(
       "postgres_changes",
@@ -285,7 +309,7 @@ export function subscribeToInvitations(
       },
       (payload) => {
         callback(mapInvitation(payload.new));
-      }
+      },
     )
     .on(
       "postgres_changes",
@@ -297,7 +321,7 @@ export function subscribeToInvitations(
       },
       (payload) => {
         callback(mapInvitation(payload.new));
-      }
+      },
     )
     .on(
       "postgres_changes",
@@ -311,7 +335,7 @@ export function subscribeToInvitations(
         if (payload.old) {
           callback({ ...mapInvitation(payload.old), status: "canceled" });
         }
-      }
+      },
     )
     .subscribe();
 
@@ -329,7 +353,7 @@ export async function saveGameSession(
   player2Score: number,
   maxRounds: number,
   difficulty: "easy" | "medium" | "hard",
-  drawingData?: string
+  drawingData?: string,
 ) {
   try {
     // Check if session exists
@@ -466,7 +490,7 @@ async function updatePlayerStats(userId: string, won: boolean, score: number) {
 export async function updateWordStats(
   userId: string,
   guessed: number,
-  drawn: number
+  drawn: number,
 ) {
   try {
     const stats = await getPlayerStats(userId);
@@ -494,29 +518,34 @@ export async function createGameSession(
   drawerId: string,
   word: string,
   maxRounds: number,
-  difficulty: "easy" | "medium" | "hard"
+  difficulty: "easy" | "medium" | "hard",
+  roundTime: number = 60,
 ): Promise<GameSession | null> {
   try {
-    const { data, error } = await supabase
-      .from("game_sessions_meeting_app")
-      .insert([
-        {
-          player1_id: player1Id,
-          player2_id: player2Id,
-          current_drawer: drawerId,
-          current_word: word,
-          current_round: 1,
-          player1_score: 0,
-          player2_score: 0,
-          max_rounds: maxRounds,
-          difficulty,
-          is_active: true,
-        },
-      ])
-      .select()
-      .single();
+    // Usar la función segura de Supabase para evitar race conditions
+    const { data, error } = await supabase.rpc("create_game_session_safe", {
+      p_player1_id: player1Id,
+      p_player2_id: player2Id,
+      p_drawer_id: drawerId,
+      p_word: word,
+      p_max_rounds: maxRounds,
+      p_round_time: roundTime,
+      p_difficulty: difficulty,
+    });
 
-    if (error) throw error;
+    if (error) {
+      // Fallback al método anterior si la función RPC no existe
+      console.warn("RPC function not found, using fallback:", error.message);
+      return await createGameSessionFallback(
+        player1Id,
+        player2Id,
+        drawerId,
+        word,
+        maxRounds,
+        difficulty,
+        roundTime,
+      );
+    }
     return data;
   } catch (error) {
     console.error("Error creating game session:", error);
@@ -524,8 +553,46 @@ export async function createGameSession(
   }
 }
 
+// Fallback para compatibilidad si no existe la función RPC
+async function createGameSessionFallback(
+  player1Id: string,
+  player2Id: string,
+  drawerId: string,
+  word: string,
+  maxRounds: number,
+  difficulty: "easy" | "medium" | "hard",
+  roundTime: number,
+): Promise<GameSession | null> {
+  const roundEndTime = new Date(Date.now() + roundTime * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("game_sessions_meeting_app")
+    .insert([
+      {
+        player1_id: player1Id,
+        player2_id: player2Id,
+        current_drawer: drawerId,
+        current_word: word,
+        current_round: 1,
+        player1_score: 0,
+        player2_score: 0,
+        max_rounds: maxRounds,
+        round_time_seconds: roundTime,
+        difficulty,
+        is_active: true,
+        round_start_time: new Date().toISOString(),
+        round_end_time: roundEndTime,
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function getActiveGameSession(
-  userId: string
+  userId: string,
 ): Promise<GameSession | null> {
   try {
     const { data, error } = await supabase
@@ -555,7 +622,9 @@ export async function updateGameSession(
     current_drawer?: string;
     current_word?: string;
     is_active?: boolean;
-  }
+    round_start_time?: string;
+    round_end_time?: string;
+  },
 ) {
   try {
     const { error } = await supabase
@@ -573,7 +642,7 @@ export async function updateGameSession(
 
 export function subscribeToGameSession(
   sessionId: string,
-  callback: (session: GameSession) => void
+  callback: (session: GameSession) => void,
 ) {
   const channel = supabase
     .channel(`game-session-${sessionId}`)
@@ -587,7 +656,7 @@ export function subscribeToGameSession(
       },
       (payload) => {
         callback(payload.new as GameSession);
-      }
+      },
     )
     .subscribe();
 
@@ -624,4 +693,166 @@ export async function forceEndAllUserSessions(userId: string) {
     console.error("Error force ending user sessions:", error);
     return false;
   }
+}
+
+// =====================================================
+// FUNCIONES PARA STROKES EN TIEMPO REAL
+// =====================================================
+
+/**
+ * Enviar un stroke al servidor
+ */
+export async function sendStroke(
+  sessionId: string,
+  round: number,
+  stroke: StrokeData,
+): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc("add_game_stroke", {
+      p_session_id: sessionId,
+      p_round: round,
+      p_stroke: stroke,
+    });
+
+    if (error) {
+      // Fallback si la función RPC no existe
+      const { error: insertError } = await supabase
+        .from("game_strokes_meeting_app")
+        .insert({
+          session_id: sessionId,
+          round: round,
+          stroke_data: stroke,
+          sequence: Date.now(), // Usar timestamp como secuencia fallback
+        });
+
+      if (insertError) throw insertError;
+    }
+    return true;
+  } catch (error) {
+    console.error("Error sending stroke:", error);
+    return false;
+  }
+}
+
+/**
+ * Obtener todos los strokes de una ronda
+ */
+export async function getStrokesForRound(
+  sessionId: string,
+  round: number,
+): Promise<StrokeData[]> {
+  try {
+    const { data, error } = await supabase
+      .from("game_strokes_meeting_app")
+      .select("stroke_data")
+      .eq("session_id", sessionId)
+      .eq("round", round)
+      .order("sequence", { ascending: true });
+
+    if (error) throw error;
+    return data?.map((s) => s.stroke_data as StrokeData) || [];
+  } catch (error) {
+    console.error("Error getting strokes:", error);
+    return [];
+  }
+}
+
+/**
+ * Suscribirse a nuevos strokes en tiempo real
+ */
+export function subscribeToStrokes(
+  sessionId: string,
+  round: number,
+  callback: (stroke: StrokeData) => void,
+) {
+  const channel = supabase
+    .channel(`game-strokes-${sessionId}-${round}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "game_strokes_meeting_app",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      (payload) => {
+        const newStroke = payload.new as GameStroke;
+        if (newStroke.round === round) {
+          callback(newStroke.stroke_data);
+        }
+      },
+    )
+    .subscribe();
+
+  return channel;
+}
+
+/**
+ * Iniciar nueva ronda con timer sincronizado
+ */
+export async function startNewRoundSync(
+  sessionId: string,
+  newDrawer: string,
+  newWord: string,
+  roundTime: number = 60,
+): Promise<GameSession | null> {
+  try {
+    // Intentar usar la función RPC
+    const { data, error } = await supabase.rpc("start_new_round", {
+      p_session_id: sessionId,
+      p_new_drawer: newDrawer,
+      p_new_word: newWord,
+      p_round_time: roundTime,
+    });
+
+    if (error) {
+      // Fallback manual
+      const roundEndTime = new Date(
+        Date.now() + roundTime * 1000,
+      ).toISOString();
+
+      const { data: updated, error: updateError } = await supabase
+        .from("game_sessions_meeting_app")
+        .update({
+          current_drawer: newDrawer,
+          current_word: newWord,
+          drawing_data: "",
+          round_start_time: new Date().toISOString(),
+          round_end_time: roundEndTime,
+        })
+        .eq("id", sessionId)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      // Incrementar round por separado
+      await supabase
+        .from("game_sessions_meeting_app")
+        .update({ current_round: (updated.current_round || 1) + 1 })
+        .eq("id", sessionId);
+
+      return updated;
+    }
+
+    return data;
+  } catch (error) {
+    console.error("Error starting new round:", error);
+    return null;
+  }
+}
+
+/**
+ * Calcular tiempo restante basado en round_end_time del servidor
+ */
+export function calculateTimeRemaining(session: GameSession): number {
+  if (!session.round_end_time) {
+    return 60; // Default
+  }
+
+  const endTime = new Date(session.round_end_time).getTime();
+  const now = Date.now();
+  const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+
+  return remaining;
 }

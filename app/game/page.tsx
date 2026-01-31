@@ -37,6 +37,10 @@ import {
   subscribeToGameSession,
   getActiveGameSession,
   forceEndAllUserSessions,
+  sendStroke,
+  subscribeToStrokes,
+  calculateTimeRemaining,
+  StrokeData,
 } from '@/lib/game-supabase';
 import { ArrowLeft, Trophy, History, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -72,6 +76,7 @@ export default function GamePage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number>(DEFAULT_ROUND_TIME);
+  const [incomingStrokes, setIncomingStrokes] = useState<StrokeData[]>([]);
   const [gameSettings, setGameSettings] = useState<GameSettings>({
     maxRounds: DEFAULT_MAX_ROUNDS,
     roundTime: DEFAULT_ROUND_TIME,
@@ -218,6 +223,27 @@ export default function GamePage() {
     };
   }, [sessionId, currentUser, gameState?.isActive]);
 
+  // Subscribe to strokes when not the drawer
+  useEffect(() => {
+    if (!sessionId || !currentUser || !gameState?.isActive) return;
+    
+    const isDrawer = gameState?.currentDrawer === currentUser?.id;
+    if (isDrawer) return; // El dibujante no necesita recibir strokes
+    
+    const channel = subscribeToStrokes(
+      sessionId,
+      gameState.round,
+      (stroke) => {
+        setIncomingStrokes(prev => [...prev, stroke]);
+      }
+    );
+
+    return () => {
+      channel.unsubscribe();
+      setIncomingStrokes([]); // Limpiar strokes al desuscribirse
+    };
+  }, [sessionId, currentUser, gameState?.isActive, gameState?.currentDrawer, gameState?.round]);
+
   // Countdown effect
   useEffect(() => {
     if (countdown === null) return;
@@ -324,7 +350,8 @@ export default function GamePage() {
       firstDrawer,
       word,
       finalSettings.maxRounds,
-      finalSettings.difficulty
+      finalSettings.difficulty,
+      finalSettings.roundTime // Incluir tiempo de ronda para timer sincronizado
     );
     
     if (!session) {
@@ -371,11 +398,19 @@ export default function GamePage() {
     setGameState(updated);
     saveGameState(updated);
     
-    // Sincronizar el dibujo con Supabase en tiempo real
+    // Sincronizar el dibujo con Supabase en tiempo real (fallback para PNG)
     await updateGameSession(sessionId, {
       drawing_data: dataUrl,
     });
   };
+
+  // Handler para strokes individuales (más eficiente que PNG)
+  const handleStroke = useCallback(async (stroke: StrokeData) => {
+    if (!sessionId || !gameState) return;
+    
+    // Enviar stroke a Supabase para sincronización en tiempo real
+    await sendStroke(sessionId, gameState.round, stroke);
+  }, [sessionId, gameState]);
 
   const handleTimeUpdate = useCallback((time: number) => {
     setTimeRemaining(time);
@@ -993,6 +1028,8 @@ export default function GamePage() {
           <Card className={`p-4 transition-all duration-300 ${wrongGuessShake ? 'animate-shake' : ''}`}>
             <CanvasDraw
               onDrawingChange={handleDrawingChange}
+              onStroke={isDrawer ? handleStroke : undefined}
+              incomingStrokes={!isDrawer ? incomingStrokes : undefined}
               disabled={!isDrawer || !gameState?.isActive}
               initialDrawing={gameState?.drawing}
               readOnly={!isDrawer}
