@@ -2,10 +2,25 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Eraser, Trash2, Palette } from 'lucide-react';
+import { Eraser, Trash2, Palette, Undo2 } from 'lucide-react';
+
+// Tipo para los datos de trazo - mucho más eficiente que PNG
+export interface StrokeData {
+  x: number;
+  y: number;
+  lastX: number | null;
+  lastY: number | null;
+  color: string;
+  size: number;
+  type: 'draw' | 'clear';
+}
 
 interface CanvasDrawProps {
   onDrawingChange?: (dataUrl: string) => void;
+  // Nuevo: callback para enviar trazos individuales (más eficiente)
+  onStroke?: (stroke: StrokeData) => void;
+  // Nuevo: trazos recibidos de otro jugador
+  incomingStrokes?: StrokeData[];
   disabled?: boolean;
   initialDrawing?: string;
   readOnly?: boolean;
@@ -26,6 +41,8 @@ const BRUSH_SIZES = [2, 5, 10, 15];
 
 export function CanvasDraw({ 
   onDrawingChange, 
+  onStroke,
+  incomingStrokes = [],
   disabled = false,
   initialDrawing,
   readOnly = false
@@ -43,6 +60,10 @@ export function CanvasDraw({
   const [hasDrawn, setHasDrawn] = useState(false);
   const hasDrawnRef = useRef(false);
   const onDrawingChangeRef = useRef(onDrawingChange);
+  const onStrokeRef = useRef(onStroke);
+  const lastCoordsRef = useRef<{ x: number; y: number } | null>(null);
+  // Historial de trazos para undo
+  const strokeHistoryRef = useRef<StrokeData[]>([]);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -60,6 +81,47 @@ export function CanvasDraw({
   useEffect(() => {
     onDrawingChangeRef.current = onDrawingChange;
   }, [onDrawingChange]);
+
+  useEffect(() => {
+    onStrokeRef.current = onStroke;
+  }, [onStroke]);
+
+  // Función para aplicar un trazo al canvas
+  const applyStroke = useCallback((stroke: StrokeData, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
+    if (stroke.type === 'clear') {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = stroke.size;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    
+    if (stroke.lastX !== null && stroke.lastY !== null) {
+      ctx.moveTo(stroke.lastX, stroke.lastY);
+    } else {
+      ctx.moveTo(stroke.x, stroke.y);
+    }
+    
+    ctx.lineTo(stroke.x, stroke.y);
+    ctx.stroke();
+  }, []);
+
+  // Procesar trazos entrantes de otro jugador
+  useEffect(() => {
+    const ctx = contextRef.current;
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas || !readOnly) return;
+
+    // Aplicar el último trazo recibido
+    if (incomingStrokes.length > 0) {
+      const lastStroke = incomingStrokes[incomingStrokes.length - 1];
+      applyStroke(lastStroke, ctx, canvas);
+    }
+  }, [incomingStrokes, readOnly, applyStroke]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -167,6 +229,7 @@ export function CanvasDraw({
       const x = e.touches[0].clientX - rect.left;
       const y = e.touches[0].clientY - rect.top;
 
+      lastCoordsRef.current = { x, y };
       ctx.beginPath();
       ctx.moveTo(x, y);
     };
@@ -181,10 +244,30 @@ export function CanvasDraw({
       const x = e.touches[0].clientX - rect.left;
       const y = e.touches[0].clientY - rect.top;
 
-      ctx.strokeStyle = currentColorRef.current;
-      ctx.lineWidth = brushSizeRef.current;
+      const stroke: StrokeData = {
+        x,
+        y,
+        lastX: lastCoordsRef.current?.x ?? null,
+        lastY: lastCoordsRef.current?.y ?? null,
+        color: currentColorRef.current,
+        size: brushSizeRef.current,
+        type: 'draw'
+      };
+
+      // Aplicar localmente
+      ctx.strokeStyle = stroke.color;
+      ctx.lineWidth = stroke.size;
       ctx.lineTo(x, y);
       ctx.stroke();
+
+      // Emitir trazo si hay callback
+      if (onStrokeRef.current) {
+        onStrokeRef.current(stroke);
+      }
+
+      // Guardar en historial
+      strokeHistoryRef.current.push(stroke);
+      lastCoordsRef.current = { x, y };
     };
 
     const handleTouchEnd = () => {
@@ -192,10 +275,12 @@ export function CanvasDraw({
       
       isDrawingRef.current = false;
       setIsDrawing(false);
+      lastCoordsRef.current = null;
       
       const ctx = contextRef.current;
       if (ctx && canvas && onDrawingChangeRef.current) {
         ctx.closePath();
+        // Solo enviar dataUrl como fallback
         const dataUrl = canvas.toDataURL('image/png');
         onDrawingChangeRef.current(dataUrl);
       }
@@ -231,6 +316,7 @@ export function CanvasDraw({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    lastCoordsRef.current = { x, y };
     context.beginPath();
     context.moveTo(x, y);
   };
@@ -242,10 +328,30 @@ export function CanvasDraw({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    const stroke: StrokeData = {
+      x,
+      y,
+      lastX: lastCoordsRef.current?.x ?? null,
+      lastY: lastCoordsRef.current?.y ?? null,
+      color: currentColor,
+      size: brushSize,
+      type: 'draw'
+    };
+
+    // Aplicar localmente
     context.strokeStyle = currentColor;
     context.lineWidth = brushSize;
     context.lineTo(x, y);
     context.stroke();
+
+    // Emitir trazo
+    if (onStroke) {
+      onStroke(stroke);
+    }
+
+    // Guardar en historial
+    strokeHistoryRef.current.push(stroke);
+    lastCoordsRef.current = { x, y };
   };
 
   const stopDrawing = () => {
@@ -253,9 +359,11 @@ export function CanvasDraw({
     
     setIsDrawing(false);
     isDrawingRef.current = false;
+    lastCoordsRef.current = null;
     
     if (context && canvasRef.current && onDrawingChange) {
       context.closePath();
+      // Fallback: enviar dataUrl completo al final del trazo
       const dataUrl = canvasRef.current.toDataURL('image/png');
       onDrawingChange(dataUrl);
     }
@@ -266,6 +374,14 @@ export function CanvasDraw({
     
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    
+    // Emitir clear stroke
+    if (onStroke) {
+      onStroke({ x: 0, y: 0, lastX: null, lastY: null, color: '', size: 0, type: 'clear' });
+    }
+
+    // Limpiar historial
+    strokeHistoryRef.current = [];
     
     // Reset hasDrawn and show placeholder again
     setHasDrawn(false);

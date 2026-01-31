@@ -15,6 +15,7 @@ interface GameControlsProps {
   timeLimit?: number; // seconds
   isActive: boolean;
   canStartGame?: boolean;
+  onTimeUpdate?: (timeLeft: number) => void; // Nuevo: callback para actualizar tiempo restante
 }
 
 export function GameControls({ 
@@ -26,7 +27,8 @@ export function GameControls({
   onEndGame,
   timeLimit = 60,
   isActive,
-  canStartGame = false
+  canStartGame = false,
+  onTimeUpdate
 }: GameControlsProps) {
   const [guess, setGuess] = useState('');
   const [timeLeft, setTimeLeft] = useState(timeLimit);
@@ -41,16 +43,23 @@ export function GameControls({
     
     const interval = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 1) {
+        const newTime = prev - 1;
+        
+        // Notificar cambio de tiempo
+        if (onTimeUpdate) {
+          onTimeUpdate(newTime);
+        }
+        
+        if (newTime <= 0) {
           if (onSkip) onSkip();
           return timeLimit;
         }
-        return prev - 1;
+        return newTime;
       });
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isActive, timeLimit, onSkip]);
+  }, [isActive, timeLimit, onSkip, onTimeUpdate]);
 
   const handleSubmitGuess = (e: React.FormEvent) => {
     e.preventDefault();

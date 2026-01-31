@@ -22,7 +22,9 @@ import {
   createNewGame, 
   nextRound, 
   checkGuess,
-  clearGameState
+  clearGameState,
+  calculateGuesserPoints,
+  calculateDrawerPoints
 } from '@/lib/game-storage';
 import {
   saveGameHistoryToSupabase as saveGameHistorySupabase,
@@ -69,6 +71,7 @@ export default function GamePage() {
   const [sendingInvitation, setSendingInvitation] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<number>(DEFAULT_ROUND_TIME);
   const [gameSettings, setGameSettings] = useState<GameSettings>({
     maxRounds: DEFAULT_MAX_ROUNDS,
     roundTime: DEFAULT_ROUND_TIME,
@@ -374,6 +377,10 @@ export default function GamePage() {
     });
   };
 
+  const handleTimeUpdate = useCallback((time: number) => {
+    setTimeRemaining(time);
+  }, []);
+
   const handleGuess = async (guess: string) => {
     if (!gameState || !currentUser || !sessionId) return;
 
@@ -389,18 +396,39 @@ export default function GamePage() {
     const updatedGuesses = [...gameState.guesses, newGuess];
     
     if (isCorrect) {
-      // Award points
+      // Calcular puntos dinámicos basados en orden y velocidad
+      const correctGuessers = gameState.correctGuessers || [];
+      const guessOrder = correctGuessers.length; // 0 = primero, 1 = segundo, etc
+      
+      // Calcular puntos para el adivinador
+      const guesserPoints = calculateGuesserPoints(
+        guessOrder,
+        timeRemaining,
+        gameSettings.roundTime
+      );
+      
+      // Calcular puntos para el dibujante
+      const drawerPoints = calculateDrawerPoints(guessOrder + 1); // +1 porque ya contamos este acierto
+      
+      // Actualizar scores
       const updatedScores = {
         ...gameState.scores,
-        [currentUser.id]: gameState.scores[currentUser.id] + gameSettings.pointsPerCorrect,
+        [currentUser.id]: gameState.scores[currentUser.id] + guesserPoints,
+        [gameState.currentDrawer]: gameState.scores[gameState.currentDrawer] + drawerPoints,
       };
+      
+      // Actualizar lista de adivinadores correctos
+      const updatedCorrectGuessers = [
+        ...correctGuessers,
+        { user: currentUser.id, timestamp: Date.now(), points: guesserPoints }
+      ];
 
       // Update streak
       setStreak(prev => prev + 1);
       
       // Show confetti celebration
       setShowConfetti(true);
-      toast.success('¡Correcto! +' + gameSettings.pointsPerCorrect + ' puntos');
+      toast.success(`¡Correcto! +${guesserPoints} puntos (Dibujante: +${drawerPoints})`);
 
       // Sincronizar scores con Supabase
       const player1Id = Object.keys(gameState.scores)[0];
@@ -447,7 +475,6 @@ export default function GamePage() {
         });
         
         // La subscription se encarga de mostrar game over
-        return;
         return;
       }
 
@@ -952,7 +979,11 @@ export default function GamePage() {
               {isDrawer ? '🎨 Estás dibujando' : '🤔 Estás adivinando'}
             </p>
             {!isDrawer && gameState?.wordToGuess && (
-              <WordHint wordLength={gameState.wordToGuess.length} />
+              <WordHint 
+                wordLength={gameState.wordToGuess.length} 
+                word={gameState.wordToGuess}
+                timeProgress={1 - (timeRemaining / gameSettings.roundTime)}
+              />
             )}
           </Card>
         )}
@@ -993,6 +1024,7 @@ export default function GamePage() {
               timeLimit={gameSettings.roundTime}
               isActive={gameState?.isActive || false}
               canStartGame={!gameState || !gameState.isActive}
+              onTimeUpdate={handleTimeUpdate}
             />
           </Card>
         )}
