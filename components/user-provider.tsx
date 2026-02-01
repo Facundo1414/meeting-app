@@ -68,15 +68,6 @@ export function UserProvider({ children }: UserProviderProps) {
     setUsername(name);
   };
 
-  // Solicitar permisos de notificación al cargar
-  useEffect(() => {
-    if (userId && typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
-  }, [userId]);
-
   // Calcular el ID y nombre del otro usuario (solo 2 usuarios en la app)
   const partnerId = userId === '1' ? '2' : '1';
   const [partnerUsername, setPartnerUsername] = useState<string>('Tu pareja');

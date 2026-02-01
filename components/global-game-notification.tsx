@@ -61,20 +61,12 @@ export function GlobalGameNotification({ userId }: GlobalGameNotificationProps) 
         
         setIsVisible(true);
 
-        // Reproducir sonido de notificación
+        // Reproducir sonido de notificación (solo dentro de la app)
         try {
           const audio = new Audio('/notification.mp3');
           audio.volume = 0.5;
           audio.play().catch(() => {}); // Ignorar errores si no hay archivo
         } catch {}
-
-        // Mostrar notificación del sistema si está permitido
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-          new Notification('🎮 Invitación de Juego', {
-            body: `${senderName || 'Tu pareja'} te invitó a jugar Quick Draw!`,
-            icon: '/icon-192.png',
-          });
-        }
       }
 
       // Ocultar si la invitación fue cancelada o expiró
