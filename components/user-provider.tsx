@@ -70,8 +70,10 @@ export function UserProvider({ children }: UserProviderProps) {
 
   // Solicitar permisos de notificación al cargar
   useEffect(() => {
-    if (userId && Notification.permission === 'default') {
-      Notification.requestPermission();
+    if (userId && typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
     }
   }, [userId]);
 

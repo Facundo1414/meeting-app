@@ -69,7 +69,7 @@ export function GlobalGameNotification({ userId }: GlobalGameNotificationProps) 
         } catch {}
 
         // Mostrar notificación del sistema si está permitido
-        if (Notification.permission === 'granted') {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
           new Notification('🎮 Invitación de Juego', {
             body: `${senderName || 'Tu pareja'} te invitó a jugar Quick Draw!`,
             icon: '/icon-192.png',
