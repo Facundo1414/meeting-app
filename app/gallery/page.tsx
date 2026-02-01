@@ -1,14 +1,39 @@
 'use client';
 
+import { useState, useCallback, useEffect } from 'react';
 import GalleryView from '@/components/gallery-view';
 import { CachePermissionBanner, useCachePermission } from '@/components/cache-permission-banner';
+import { GalleryPasswordGate, isGalleryUnlocked } from '@/components/gallery-password-gate';
 
 export default function GalleryPage() {
   const cachePermission = useCachePermission();
+  const [isUnlocked, setIsUnlocked] = useState<boolean | null>(null);
 
-  // Mostrar banner si no hay permiso
+  // Verificar estado de desbloqueo al cargar
+  useEffect(() => {
+    setIsUnlocked(isGalleryUnlocked());
+  }, []);
+
+  const handleUnlock = useCallback(() => {
+    setIsUnlocked(true);
+  }, []);
+
+  // Cargando estado inicial
+  if (isUnlocked === null) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Mostrar pantalla de contraseña si no está desbloqueada
+  if (!isUnlocked) {
+    return <GalleryPasswordGate onUnlock={handleUnlock} />;
+  }
+
+  // Mostrar banner de permisos de caché si no hay permiso
   if (cachePermission === null) {
-    // Cargando estado inicial
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -17,10 +42,9 @@ export default function GalleryPage() {
   }
 
   if (cachePermission === false) {
-    // No ha aceptado, mostrar banner
     return <CachePermissionBanner />;
   }
 
-  // Ya aceptó, mostrar galería
+  // Ya está desbloqueada y tiene permisos, mostrar galería
   return <GalleryView />;
 }
