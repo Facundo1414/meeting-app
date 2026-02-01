@@ -17,6 +17,10 @@ import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { PageTransition } from '@/components/page-transition';
 import { SyncIndicator } from '@/components/sync-indicator';
 import { DesktopSidebar } from '@/components/desktop-sidebar';
+import { useVoiceChatGlobal } from '@/components/voice-chat-provider';
+import { Phone
+
+ } from 'lucide-react';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
 
@@ -36,8 +40,12 @@ export function CalendarView() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [deleteSlotId, setDeleteSlotId] = useState<string | null>(null);
+  const [partnerUsername, setPartnerUsername] = useState<string>('Tu pareja');
   const router = useRouter();
   const isChangingDate = useRef(false);
+  
+  // Hook de llamadas de voz
+  const { startCall, isInCall, isConnecting } = useVoiceChatGlobal();
 
   // Definir loadSlots antes de usarlo en useEffect
   const loadSlots = useCallback(async () => {
@@ -82,6 +90,17 @@ export function CalendarView() {
     
     // Actualizar last_seen al entrar a la app
     updateLastSeen(currentUser.id, currentUser.username);
+    
+    // Cargar nombre del partner
+    const partnerId = currentUser.id === '1' ? '2' : '1';
+    supabase
+      .from('users_meeting_app')
+      .select('username')
+      .eq('id', partnerId)
+      .single()
+      .then(({ data }) => {
+        if (data?.username) setPartnerUsername(data.username);
+      });
     
     // Cargar preferencia de dark mode
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
@@ -326,58 +345,50 @@ export function CalendarView() {
         onLogout={handleLogout}
       />
       
-      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 lg:pb-8 overflow-auto lg:ml-64">
+      <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-mobile-nav overflow-auto lg:ml-64">
         <div className="h-full overflow-auto lg:max-w-6xl lg:mx-auto">
           <SyncIndicator isSyncing={isSyncing} />
           
           {/* Mobile Header */}
           <div className="lg:hidden sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10">
-            <div className="flex items-center justify-between p-2 gap-2">
-              <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+            <div className="flex items-center justify-between p-3">
+              <button
+                onClick={() => router.push('/week')}
+                className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                title="Vista mensual"
+              >
+                📅 Mes
+              </button>
+              <h1 className="text-lg font-bold bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
+                Calendario
+              </h1>
+              <div className="flex gap-2 items-center">
+                {/* Botón de llamada */}
                 <button
-                  onClick={() => router.push('/week')}
-                  className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
-                  title="Vista mensual"
+                  onClick={() => {
+                    const partnerId = user?.id === '1' ? '2' : '1';
+                    startCall(partnerId, partnerUsername);
+                  }}
+                  disabled={isInCall || isConnecting}
+                  className="p-2 rounded-lg bg-green-500 hover:bg-green-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={`Llamar a ${partnerUsername}`}
                 >
-                  📅
+                  <Phone className="h-4 w-4" />
                 </button>
+                
                 <button
                   onClick={toggleDarkMode}
-                  className="px-3 py-1.5 text-sm rounded-md transition-colors hover:bg-white dark:hover:bg-gray-600"
+                  className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                   title="Cambiar tema"
                 >
                   {darkMode ? '☀️' : '🌙'}
                 </button>
-              </div>
-              <h1 className="text-base font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:to-purple-400">
-                Calendar
-              </h1>
-              <div className="flex gap-1 items-center">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => {
-                    if (user) {
-                      localStorage.setItem(`lastReadMessage_${user.id}`, new Date().toISOString());
-                      setUnreadCount(0);
-                    }
-                    router.push('/messages');
-                  }}
-                  className="relative bg-blue-500 text-white hover:bg-blue-600 border-blue-600 px-2 text-xs h-8"
-                >
-                  💬
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-bold text-[10px]">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </Button>
                 
                 {/* Menú hamburguesa de perfil */}
                 <div className="relative profile-menu-container">
                   <button
                     onClick={() => setShowProfileMenu(!showProfileMenu)}
-                    className="px-2 py-1 text-sm rounded-md transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 h-8"
+                    className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                     title="Perfil y configuración"
                   >
                     ☰
@@ -669,58 +680,7 @@ export function CalendarView() {
           </CardContent>
         </Card>
             </div>
-
-        {/* Desktop: Full width sections */}
-        <div className="space-y-4">
-          {/* Botón del juego Quick Draw */}
-          <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
-          <CardContent className="p-4">
-            <Button 
-              onClick={() => router.push('/game')}
-              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold py-6 text-lg shadow-lg"
-              size="lg"
-            >
-              🎨 Quick Draw - Jugar con tu amigo
-            </Button>
-            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Dibujen y adivinen palabras juntos
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Botón de Ruleta */}
-        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-950 dark:to-orange-950">
-          <CardContent className="p-4">
-            <Button 
-              onClick={() => router.push('/roulette')}
-              className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold py-6 text-lg shadow-lg"
-              size="lg"
-            >
-              🎰 Ruleta - Decisiones al azar
-            </Button>
-            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Personaliza las opciones y gira
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Botón de galería */}
-        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950 dark:to-cyan-950">
-          <CardContent className="p-4">
-            <Button 
-              onClick={() => router.push('/gallery')}
-              className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold py-6 text-lg shadow-lg"
-              size="lg"
-            >
-              📷 Galería en Común
-            </Button>
-            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Todas las fotos y videos compartidos
-            </p>
-          </CardContent>
-        </Card>
         </div>
-      </div>
 
       {/* Bottom Sheet para agregar/editar eventos */}
       <BottomSheet

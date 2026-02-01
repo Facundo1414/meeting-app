@@ -358,3 +358,19 @@ img {
     text-decoration: underline;
   }
 }
+
+/* Safe area for mobile navigation (iPhone notch, etc) */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Ensure content doesn't get hidden behind bottom nav */
+.pb-mobile-nav {
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 1024px) {
+  .pb-mobile-nav {
+    padding-bottom: 0;
+  }
+}

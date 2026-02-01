@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback, ReactNode } from 'react';
+import { useEffect, useState, useCallback, ReactNode, useMemo, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { User } from '@/lib/auth-supabase';
 import { DesktopSidebar } from '@/components/desktop-sidebar';
+import { getMessages } from '@/lib/storage-supabase';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -61,7 +62,6 @@ export function AppLayout({
   useEffect(() => {
     const checkUnread = async () => {
       if (!user) return;
-      const { getMessages } = await import('@/lib/storage-supabase');
       const messages = await getMessages();
       const lastReadTimestamp = localStorage.getItem(`lastReadMessage_${user.id}`);
       

@@ -235,7 +235,7 @@ export function MonthView() {
         onLogout={handleLogout}
       />
       
-      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-6 overflow-auto lg:ml-64">
+      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-mobile-nav overflow-auto lg:ml-64">
         <div className="h-full overflow-auto lg:max-w-6xl lg:mx-auto lg:px-6 xl:px-8">
           <SyncIndicator isSyncing={isSyncing} />
           

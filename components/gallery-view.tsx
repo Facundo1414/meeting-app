@@ -317,7 +317,7 @@ export function GalleryView() {
         onLogout={handleLogout}
       />
       
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 lg:ml-64">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 lg:ml-64 pb-mobile-nav">
         {/* Desktop wrapper para centrar contenido */}
         <div className="lg:max-w-7xl lg:mx-auto">
         {/* Header */}

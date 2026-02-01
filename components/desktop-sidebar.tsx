@@ -1,9 +1,11 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Calendar, Image, MessageCircle, LogOut, Moon, Sun, Gamepad2, Dices } from 'lucide-react';
 import { User } from '@/lib/auth-supabase';
+import { memo } from 'react';
 
 interface DesktopSidebarProps {
   user: User | null;
@@ -13,7 +15,7 @@ interface DesktopSidebarProps {
   onLogout?: () => void;
 }
 
-export function DesktopSidebar({ 
+export const DesktopSidebar = memo(function DesktopSidebar({ 
   user, 
   unreadCount = 0, 
   darkMode = false,
@@ -21,7 +23,6 @@ export function DesktopSidebar({
   onLogout 
 }: DesktopSidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
 
   const navItems = [
     { href: '/calendar', icon: Calendar, label: 'Calendario' },
@@ -58,15 +59,17 @@ export function DesktopSidebar({
               className={`w-full justify-start relative ${
                 isActive ? 'bg-secondary text-secondary-foreground' : ''
               }`}
-              onClick={() => router.push(item.href)}
+              asChild
             >
-              <Icon className="mr-3 h-5 w-5" />
-              <span>{item.label}</span>
-              {item.badge !== undefined && item.badge > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                  {item.badge > 9 ? '9+' : item.badge}
-                </span>
-              )}
+              <Link href={item.href} prefetch={true}>
+                <Icon className="mr-3 h-5 w-5" />
+                <span>{item.label}</span>
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                    {item.badge > 9 ? '9+' : item.badge}
+                  </span>
+                )}
+              </Link>
             </Button>
           );
         })}
@@ -97,4 +100,4 @@ export function DesktopSidebar({
       </div>
     </aside>
   );
-}
+});

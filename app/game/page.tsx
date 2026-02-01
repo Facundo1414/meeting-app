@@ -764,7 +764,7 @@ export default function GamePage() {
           onToggleDarkMode={toggleDarkMode}
           onLogout={handleLogout}
         />
-        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 lg:ml-64">
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 lg:ml-64 pb-mobile-nav">
           {currentUser && (
             <GameHeader
               onBack={() => {
@@ -807,7 +807,7 @@ export default function GamePage() {
           onToggleDarkMode={toggleDarkMode}
           onLogout={handleLogout}
         />
-        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-4 lg:ml-64">
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-4 lg:ml-64 pb-mobile-nav">
           <div className="max-w-2xl mx-auto space-y-4">
             <div className="flex items-center gap-4">
               <Button
@@ -885,7 +885,7 @@ export default function GamePage() {
           onToggleDarkMode={toggleDarkMode}
           onLogout={handleLogout}
         />
-        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-4 flex items-center justify-center lg:ml-64">
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-4 flex items-center justify-center lg:ml-64 pb-mobile-nav">
           <Card className="max-w-md w-full p-8 text-center space-y-6">
             <Trophy className="h-20 w-20 mx-auto text-yellow-500" />
             <div>
@@ -935,7 +935,7 @@ export default function GamePage() {
         onToggleDarkMode={toggleDarkMode}
         onLogout={handleLogout}
       />
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 lg:ml-64">
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 lg:ml-64 pb-mobile-nav">
         {/* Confetti Effect */}
         <ConfettiEffect isActive={showConfetti} onComplete={() => setShowConfetti(false)} />
         

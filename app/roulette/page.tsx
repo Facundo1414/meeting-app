@@ -546,7 +546,7 @@ export default function RoulettePage() {
 
         {/* Desktop wrapper para centrar contenido */}
         <div className="max-w-4xl mx-auto px-4 lg:px-6 xl:px-8">
-          <div className="py-4 pb-24 space-y-6">
+          <div className="py-4 pb-mobile-nav space-y-6">
         {/* Roulette Canvas */}
         <div className="flex justify-center">
           <div className="relative">
