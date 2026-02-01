@@ -13,6 +13,7 @@ import { GameSetup } from '@/components/game/game-setup';
 import { GameInvitation } from '@/components/game/game-invitation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { User } from '@/lib/auth-supabase';
 import { updateLastSeen } from '@/lib/storage-supabase';
 import { 
@@ -71,6 +72,8 @@ export default function GamePage() {
   const [isOpponentOnline, setIsOpponentOnline] = useState(false);
   const [showInvitation, setShowInvitation] = useState(false);
   const [opponentUsername, setOpponentUsername] = useState<string>('');
+  const [darkMode, setDarkMode] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [fromInvitation, setFromInvitation] = useState(false);
   const [sendingInvitation, setSendingInvitation] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -93,6 +96,13 @@ export default function GamePage() {
     }
     const user: User = JSON.parse(userData);
     setCurrentUser(user);
+    
+    // Load dark mode preference
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(savedDarkMode);
+    if (savedDarkMode) {
+      document.documentElement.classList.add('dark');
+    }
     
     // Load opponent username
     const loadOpponent = async () => {
@@ -728,16 +738,40 @@ export default function GamePage() {
     return opponentUsername || 'Oponente';
   };
 
+  const toggleDarkMode = useCallback(() => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', String(newDarkMode));
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('user');
+    router.push('/');
+  }, [router]);
+
   if (showSetup) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">
-        {currentUser && (
-          <GameHeader
-            onBack={() => {
-              setShowSetup(false);
-              router.push('/calendar');
-            }}
-            onHistory={() => {
+      <>
+        <DesktopSidebar 
+          user={currentUser!}
+          unreadCount={unreadCount}
+          darkMode={darkMode}
+          onToggleDarkMode={toggleDarkMode}
+          onLogout={handleLogout}
+        />
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 lg:ml-64">
+          {currentUser && (
+            <GameHeader
+              onBack={() => {
+                setShowSetup(false);
+                router.push('/calendar');
+              }}
+              onHistory={() => {
               setShowSetup(false);
               setShowHistory(true);
             }}
@@ -746,152 +780,181 @@ export default function GamePage() {
             onOpponentStatusChange={setIsOpponentOnline}
           />
         )}
-        <GameSetup
-          onStartGame={startNewGame}
-          onCancel={() => {
-            setShowSetup(false);
-            setFromInvitation(false);
-            setSendingInvitation(false);
-            router.push('/calendar');
-          }}
-          initialSettings={fromInvitation ? gameSettings : undefined}
-          readonly={fromInvitation}
-          isSendingInvitation={sendingInvitation}
-        />
-      </div>
+          <GameSetup
+            onStartGame={startNewGame}
+            onCancel={() => {
+              setShowSetup(false);
+              setFromInvitation(false);
+              setSendingInvitation(false);
+              router.push('/calendar');
+            }}
+            initialSettings={fromInvitation ? gameSettings : undefined}
+            readonly={fromInvitation}
+            isSendingInvitation={sendingInvitation}
+          />
+        </div>
+      </>
     );
   }
 
   if (showHistory) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-4">
-        <div className="max-w-2xl mx-auto space-y-4">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowHistory(false)}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <h1 className="text-2xl font-bold">Historial de Partidas</h1>
-          </div>
-
-          {history.length === 0 ? (
-            <Card className="p-8 text-center">
-              <Trophy className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-500">No hay partidas jugadas aún</p>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {history.map((game) => (
-                <Card key={game.id} className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Trophy className="h-4 w-4 text-yellow-500" />
-                        <span className="font-semibold">
-                          Ganador: {game.winner_id === currentUser?.id ? 'Tú' : 'Oponente'}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {game.rounds_played} rondas jugadas
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {new Date(game.created_at).toLocaleDateString('es-AR', {
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm">
-                        <span className={game.player1_id === currentUser?.id ? 'font-bold' : ''}>
-                          {game.player1_id === currentUser?.id ? 'Tú' : 'Oponente'}:
-                        </span>{' '}
-                        <span className="font-semibold">{game.player1_score}</span>
-                      </div>
-                      <div className="text-sm">
-                        <span className={game.player2_id === currentUser?.id ? 'font-bold' : ''}>
-                          {game.player2_id === currentUser?.id ? 'Tú' : 'Oponente'}:
-                        </span>{' '}
-                        <span className="font-semibold">{game.player2_score}</span>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+      <>
+        <DesktopSidebar 
+          user={currentUser!}
+          unreadCount={unreadCount}
+          darkMode={darkMode}
+          onToggleDarkMode={toggleDarkMode}
+          onLogout={handleLogout}
+        />
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-4 lg:ml-64">
+          <div className="max-w-2xl mx-auto space-y-4">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowHistory(false)}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <h1 className="text-2xl font-bold">Historial de Partidas</h1>
             </div>
-          )}
+
+            {history.length === 0 ? (
+              <Card className="p-8 text-center">
+                <Trophy className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-gray-500">No hay partidas jugadas aún</p>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {history.map((game) => (
+                  <Card key={game.id} className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Trophy className="h-4 w-4 text-yellow-500" />
+                          <span className="font-semibold">
+                            Ganador: {game.winner_id === currentUser?.id ? 'Tú' : 'Oponente'}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          {game.rounds_played} rondas jugadas
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {new Date(game.created_at).toLocaleDateString('es-AR', {
+                            day: 'numeric',
+                            month: 'long',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm">
+                          <span className={game.player1_id === currentUser?.id ? 'font-bold' : ''}>
+                            {game.player1_id === currentUser?.id ? 'Tú' : 'Oponente'}:
+                          </span>{' '}
+                          <span className="font-semibold">{game.player1_score}</span>
+                        </div>
+                        <div className="text-sm">
+                          <span className={game.player2_id === currentUser?.id ? 'font-bold' : ''}>
+                            {game.player2_id === currentUser?.id ? 'Tú' : 'Oponente'}:
+                          </span>{' '}
+                          <span className="font-semibold">{game.player2_score}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (gameOver && winner) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white p-4 flex items-center justify-center">
-        <Card className="max-w-md w-full p-8 text-center space-y-6">
-          <Trophy className="h-20 w-20 mx-auto text-yellow-500" />
-          <div>
-            <h1 className="text-3xl font-bold mb-2">¡Juego Terminado!</h1>
-            <p className="text-xl">
-              {winner === currentUser?.id ? '¡Ganaste! 🎉' : 'Perdiste 😢'}
-            </p>
-          </div>
-          
-          {gameState && (
-            <div className="space-y-2">
-              <h2 className="font-semibold">Puntuación Final:</h2>
-              {Object.entries(gameState.scores).map(([userId, score]) => (
-                <div key={userId} className="flex justify-between items-center">
-                  <span>{userId === currentUser?.id ? 'Tú' : 'Oponente'}:</span>
-                  <span className="font-bold text-xl">{score}</span>
-                </div>
-              ))}
+      <>
+        <DesktopSidebar 
+          user={currentUser!}
+          unreadCount={unreadCount}
+          darkMode={darkMode}
+          onToggleDarkMode={toggleDarkMode}
+          onLogout={handleLogout}
+        />
+        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-4 flex items-center justify-center lg:ml-64">
+          <Card className="max-w-md w-full p-8 text-center space-y-6">
+            <Trophy className="h-20 w-20 mx-auto text-yellow-500" />
+            <div>
+              <h1 className="text-3xl font-bold mb-2">¡Juego Terminado!</h1>
+              <p className="text-xl">
+                {winner === currentUser?.id ? '¡Ganaste! 🎉' : 'Perdiste 😢'}
+              </p>
             </div>
-          )}
+            
+            {gameState && (
+              <div className="space-y-2">
+                <h2 className="font-semibold">Puntuación Final:</h2>
+                {Object.entries(gameState.scores).map(([userId, score]) => (
+                  <div key={userId} className="flex justify-between items-center">
+                    <span>{userId === currentUser?.id ? 'Tú' : 'Oponente'}:</span>
+                    <span className="font-bold text-xl">{score}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
-          <div className="space-y-2">
-            <Button onClick={() => startNewGame()} className="w-full gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Jugar de Nuevo
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => router.push('/calendar')}
-              className="w-full"
-            >
-              Volver al Calendario
-            </Button>
-          </div>
-        </Card>
-      </div>
+            <div className="space-y-2">
+              <Button onClick={() => startNewGame()} className="w-full gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Jugar de Nuevo
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => router.push('/calendar')}
+                className="w-full"
+              >
+                Volver al Calendario
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
-      {/* Confetti Effect */}
-      <ConfettiEffect isActive={showConfetti} onComplete={() => setShowConfetti(false)} />
-      
-      {/* Header */}
-      {currentUser && (
-        <GameHeader
-          onBack={() => router.push('/calendar')}
-          onHistory={() => setShowHistory(true)}
-          currentUserName={currentUser.username}
-          opponentUsername={getOpponentUsername()}
-          onOpponentStatusChange={setIsOpponentOnline}
-          onForfeit={handleForfeit}
-          showForfeit={gameState?.isActive || false}
-        />
+    <>
+      <DesktopSidebar 
+        user={currentUser!}
+        unreadCount={unreadCount}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onLogout={handleLogout}
+      />
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 lg:ml-64">
+        {/* Confetti Effect */}
+        <ConfettiEffect isActive={showConfetti} onComplete={() => setShowConfetti(false)} />
+        
+        {/* Header */}
+        {currentUser && (
+          <GameHeader
+            onBack={() => router.push('/calendar')}
+            onHistory={() => setShowHistory(true)}
+            currentUserName={currentUser.username}
+            opponentUsername={getOpponentUsername()}
+            onOpponentStatusChange={setIsOpponentOnline}
+            onForfeit={handleForfeit}
+            showForfeit={gameState?.isActive || false}
+          />
       )}
       
-      <div className="max-w-2xl mx-auto p-4 space-y-4">
+      {/* Desktop wrapper para centrar contenido */}
+      <div className="max-w-4xl mx-auto px-4 lg:px-6 xl:px-8">
+      <div className="py-4 space-y-4">
         {/* Game Description - Show when no active game */}
         {(!gameState || !gameState.isActive) && (
           <Card className="p-6 space-y-4 bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 dark:from-purple-950 dark:via-pink-950 dark:to-blue-950">
@@ -1085,6 +1148,8 @@ export default function GamePage() {
           </Card>
         )}
       </div>
+      </div>
     </div>
+    </>
   );
 }

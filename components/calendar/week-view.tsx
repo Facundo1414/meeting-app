@@ -10,6 +10,7 @@ import { TimeSlot, getTimeSlots } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
 import { ChevronLeft, ChevronRight, Calendar, Users } from 'lucide-react';
 import { SyncIndicator } from '@/components/sync-indicator';
+import { DesktopSidebar } from '@/components/desktop-sidebar';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -29,7 +30,24 @@ export function WeekView({ onDayClick }: WeekViewProps) {
     return new Date(today.setDate(diff));
   });
   const [isSyncing, setIsSyncing] = useState(false);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
   const router = useRouter();
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('user');
+    router.push('/');
+  }, [router]);
+
+  const toggleDarkMode = useCallback(() => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', String(newDarkMode));
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -38,6 +56,11 @@ export function WeekView({ onDayClick }: WeekViewProps) {
       return;
     }
     setUser(JSON.parse(userData));
+    
+    // Load dark mode preference
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(savedDarkMode);
+    
     loadSlots();
 
     const channel = supabase
@@ -175,7 +198,16 @@ export function WeekView({ onDayClick }: WeekViewProps) {
   if (!user) return null;
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800">
+    <>
+      <DesktopSidebar 
+        user={user}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
+        onLogout={handleLogout}
+      />
+      
+      <div className="h-full flex flex-col bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 lg:ml-64">
+        <div className="lg:max-w-7xl lg:mx-auto lg:w-full lg:px-6 xl:px-8 flex flex-col h-full">
       <SyncIndicator isSyncing={isSyncing} />
       
       {/* Header */}
@@ -307,6 +339,8 @@ export function WeekView({ onDayClick }: WeekViewProps) {
           </div>
         </div>
       </div>
-    </div>
+        </div>
+      </div>
+    </>
   );
 }

@@ -965,6 +965,8 @@ export function MessagesView() {
       />
       
       <div className="min-h-screen bg-[#111B21] flex flex-col lg:ml-64">
+        {/* Desktop wrapper para centrar el contenido del chat */}
+        <div className="flex-1 flex flex-col lg:max-w-5xl lg:mx-auto lg:w-full lg:border-x lg:border-[#2A3942]">
       {/* Header - Sticky */}
       <div className="sticky top-0 z-30 bg-[#111B21]">
         <ChatHeader
@@ -1291,6 +1293,7 @@ export function MessagesView() {
           />
         </div>
       )}
+        </div>
       </div>
     </>
   );

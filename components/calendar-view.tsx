@@ -326,8 +326,8 @@ export function CalendarView() {
         onLogout={handleLogout}
       />
       
-      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 lg:pb-4 overflow-auto lg:ml-64">
-        <div className="h-full overflow-auto">
+      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-20 lg:pb-8 overflow-auto lg:ml-64">
+        <div className="h-full overflow-auto lg:max-w-6xl lg:mx-auto">
           <SyncIndicator isSyncing={isSyncing} />
           
           {/* Mobile Header */}
@@ -443,8 +443,8 @@ export function CalendarView() {
           </div>
 
           {/* Desktop Header */}
-          <div className="hidden lg:block sticky top-0 bg-white dark:bg-gray-800 shadow-md z-10 border-b border-border">
-            <div className="px-8 py-4">
+          <div className="hidden lg:block sticky top-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm shadow-sm z-10 border-b border-border">
+            <div className="px-6 xl:px-8 py-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-2xl font-bold dark:text-gray-100">
                   Calendario de Disponibilidad
@@ -478,9 +478,9 @@ export function CalendarView() {
             </div>
           </div>
 
-          <div className="p-4 lg:p-8 space-y-4">
+          <div className="p-4 lg:px-6 xl:px-8 lg:py-6 space-y-4 lg:space-y-6">
             {/* Desktop: Two column layout */}
-            <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-4 lg:space-y-0">
+            <div className="lg:grid lg:grid-cols-2 lg:gap-8 space-y-4 lg:space-y-0">
               {/* Tu disponibilidad */}
               <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="pb-3">
@@ -684,6 +684,22 @@ export function CalendarView() {
             </Button>
             <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
               Dibujen y adivinen palabras juntos
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Botón de Ruleta */}
+        <Card className="shadow-lg dark:bg-gray-800 dark:border-gray-700 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-950 dark:to-orange-950">
+          <CardContent className="p-4">
+            <Button 
+              onClick={() => router.push('/roulette')}
+              className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold py-6 text-lg shadow-lg"
+              size="lg"
+            >
+              🎰 Ruleta - Decisiones al azar
+            </Button>
+            <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Personaliza las opciones y gira
             </p>
           </CardContent>
         </Card>

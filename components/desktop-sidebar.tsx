@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Calendar, Image, MessageCircle, LogOut, Moon, Sun, Gamepad2 } from 'lucide-react';
+import { Calendar, Image, MessageCircle, LogOut, Moon, Sun, Gamepad2, Dices } from 'lucide-react';
 import { User } from '@/lib/auth-supabase';
 
 interface DesktopSidebarProps {
@@ -27,7 +27,8 @@ export function DesktopSidebar({
     { href: '/calendar', icon: Calendar, label: 'Calendario' },
     { href: '/gallery', icon: Image, label: 'Galería' },
     { href: '/messages', icon: MessageCircle, label: 'Mensajes', badge: unreadCount },
-    { href: '/game', icon: Gamepad2, label: 'Juego' },
+    { href: '/game', icon: Gamepad2, label: 'Pictionary' },
+    { href: '/roulette', icon: Dices, label: 'Ruleta' },
   ];
 
   return (

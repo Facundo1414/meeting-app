@@ -318,6 +318,8 @@ export function GalleryView() {
       />
       
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 lg:ml-64">
+        {/* Desktop wrapper para centrar contenido */}
+        <div className="lg:max-w-7xl lg:mx-auto">
         {/* Header */}
         <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-3 lg:p-6 sticky top-0 z-20 shadow-sm">
         <div className="max-w-7xl mx-auto">
@@ -717,6 +719,7 @@ export function GalleryView() {
         {showCacheMonitor && (
           <CacheMonitor onClose={() => setShowCacheMonitor(false)} />
         )}
+        </div>
       </div>
     </>
   );
