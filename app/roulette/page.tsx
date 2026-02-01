@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { User } from '@/lib/auth-supabase';
-import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { 
   ArrowLeft, 
   Plus, 
@@ -509,15 +508,7 @@ export default function RoulettePage() {
   }
 
   return (
-    <>
-      <DesktopSidebar 
-        user={currentUser}
-        unreadCount={unreadCount}
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
-        onLogout={handleLogout}
-      />
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white lg:ml-64">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white">
         {/* Header */}
         <div className="sticky top-0 z-50 bg-black/50 backdrop-blur-lg border-b border-white/10">
           <div className="flex items-center justify-between p-4 max-w-4xl mx-auto">
@@ -798,6 +789,5 @@ export default function RoulettePage() {
         </div>
       </div>
       </div>
-    </>
   );
 }

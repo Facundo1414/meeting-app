@@ -11,7 +11,6 @@ import { CalendarMonthSkeleton } from '@/components/calendar-skeleton';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { PageTransition } from '@/components/page-transition';
 import { SyncIndicator } from '@/components/sync-indicator';
-import { DesktopSidebar } from '@/components/desktop-sidebar';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -227,15 +226,7 @@ export function MonthView() {
   const otherUserId = user.id === '1' ? '2' : '1';
 
   return (
-    <>
-      <DesktopSidebar 
-        user={user}
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
-        onLogout={handleLogout}
-      />
-      
-      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-mobile-nav overflow-auto lg:ml-64">
+      <PageTransition className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-mobile-nav overflow-auto">
         <div className="h-full overflow-auto lg:max-w-6xl lg:mx-auto lg:px-6 xl:px-8">
           <SyncIndicator isSyncing={isSyncing} />
           
@@ -475,6 +466,5 @@ export function MonthView() {
           </div>
         </div>
       </PageTransition>
-    </>
   );
 }

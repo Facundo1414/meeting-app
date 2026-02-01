@@ -1,20 +1,35 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { VoiceChatProvider } from '@/components/voice-chat-provider';
 import { GlobalVoiceChatUI } from '@/components/global-voice-chat-ui';
 import { MobileNav } from '@/components/mobile-nav';
+import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { supabase } from '@/lib/supabase';
+
+interface User {
+  id: string;
+  username: string;
+}
 
 interface UserContextType {
   userId: string | null;
   username: string | null;
+  user: User | null;
+  darkMode: boolean;
+  toggleDarkMode: () => void;
+  logout: () => void;
   setUser: (id: string | null, name: string | null) => void;
 }
 
 const UserContext = createContext<UserContextType>({
   userId: null,
   username: null,
+  user: null,
+  darkMode: false,
+  toggleDarkMode: () => {},
+  logout: () => {},
   setUser: () => {},
 });
 
@@ -29,6 +44,9 @@ interface UserProviderProps {
 export function UserProvider({ children }: UserProviderProps) {
   const [userId, setUserId] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   // Cargar usuario de localStorage al inicio
   useEffect(() => {
@@ -41,6 +59,13 @@ export function UserProvider({ children }: UserProviderProps) {
       } catch (error) {
         console.error('Error parsing user data:', error);
       }
+    }
+    
+    // Cargar dark mode
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(savedDarkMode);
+    if (savedDarkMode) {
+      document.documentElement.classList.add('dark');
     }
 
     // Escuchar cambios en localStorage (para cuando se hace login/logout)
@@ -65,10 +90,31 @@ export function UserProvider({ children }: UserProviderProps) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  const toggleDarkMode = useCallback(() => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', String(newDarkMode));
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('user');
+    setUserId(null);
+    setUsername(null);
+    router.push('/');
+  }, [router]);
+
   const setUser = (id: string | null, name: string | null) => {
     setUserId(id);
     setUsername(name);
   };
+
+  // Crear objeto user completo
+  const user: User | null = userId && username ? { id: userId, username } : null;
 
   // Calcular el ID y nombre del otro usuario (solo 2 usuarios en la app)
   const partnerId = userId === '1' ? '2' : '1';
@@ -144,10 +190,26 @@ export function UserProvider({ children }: UserProviderProps) {
     };
   }, [userId]);
 
+  // Páginas públicas que no necesitan sidebar
+  const isPublicPage = pathname === '/' || pathname === '/landing';
+
   return (
-    <UserContext.Provider value={{ userId, username, setUser }}>
+    <UserContext.Provider value={{ userId, username, user, darkMode, toggleDarkMode, logout, setUser }}>
       <VoiceChatProvider userId={userId}>
-        {children}
+        {/* Sidebar para desktop - solo en páginas autenticadas */}
+        {userId && !isPublicPage && (
+          <DesktopSidebar
+            user={user}
+            unreadCount={unreadCount}
+            darkMode={darkMode}
+            onToggleDarkMode={toggleDarkMode}
+            onLogout={logout}
+          />
+        )}
+        {/* Contenido principal con margen para el sidebar en desktop */}
+        <div className={userId && !isPublicPage ? 'lg:ml-64' : ''}>
+          {children}
+        </div>
         {/* Navegación móvil global */}
         <MobileNav unreadCount={unreadCount} />
         {/* Chat de voz global - disponible en toda la app */}

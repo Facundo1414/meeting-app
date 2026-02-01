@@ -1,18 +1,25 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import GalleryView from '@/components/gallery-view';
 import { CachePermissionBanner, useCachePermission } from '@/components/cache-permission-banner';
 import { GalleryPasswordGate, isGalleryUnlocked } from '@/components/gallery-password-gate';
 
 export default function GalleryPage() {
+  const router = useRouter();
   const cachePermission = useCachePermission();
   const [isUnlocked, setIsUnlocked] = useState<boolean | null>(null);
 
   // Verificar estado de desbloqueo al cargar
   useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      router.push('/');
+      return;
+    }
     setIsUnlocked(isGalleryUnlocked());
-  }, []);
+  }, [router]);
 
   const handleUnlock = useCallback(() => {
     setIsUnlocked(true);

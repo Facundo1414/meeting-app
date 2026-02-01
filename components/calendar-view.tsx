@@ -16,7 +16,6 @@ import { CalendarDaySkeleton } from '@/components/calendar-skeleton';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { PageTransition } from '@/components/page-transition';
 import { SyncIndicator } from '@/components/sync-indicator';
-import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { useVoiceChatGlobal } from '@/components/voice-chat-provider';
 import { Phone
 
@@ -336,16 +335,7 @@ export function CalendarView() {
   if (!user) return null;
 
   return (
-    <>
-      <DesktopSidebar 
-        user={user}
-        unreadCount={unreadCount}
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
-        onLogout={handleLogout}
-      />
-      
-      <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-mobile-nav overflow-auto lg:ml-64">
+      <PageTransition className="min-h-screen bg-linear-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 pb-mobile-nav overflow-auto">
         <div className="h-full overflow-auto lg:max-w-6xl lg:mx-auto">
           <SyncIndicator isSyncing={isSyncing} />
           
@@ -843,6 +833,5 @@ export function CalendarView() {
       />
       </div>
       </PageTransition>
-    </>
   );
 }

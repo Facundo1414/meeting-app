@@ -11,7 +11,6 @@ import { ChunkedImage, ChunkedVideo, ChunkedAudio } from '@/components/chunked-m
 import { ThumbnailImage } from '@/components/thumbnail-image';
 import { VideoThumbnail } from '@/components/video-thumbnail';
 import { CacheMonitor } from '@/components/cache-monitor';
-import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { User } from '@/lib/auth-supabase';
 import { Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -309,15 +308,7 @@ export function GalleryView() {
   };
 
   return (
-    <>
-      <DesktopSidebar 
-        user={user}
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
-        onLogout={handleLogout}
-      />
-      
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 lg:ml-64 pb-mobile-nav">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-mobile-nav">
         {/* Desktop wrapper para centrar contenido */}
         <div className="lg:max-w-7xl lg:mx-auto">
         {/* Header */}
@@ -721,7 +712,6 @@ export function GalleryView() {
         )}
         </div>
       </div>
-    </>
   );
 }
 

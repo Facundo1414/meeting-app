@@ -10,7 +10,6 @@ import { TimeSlot, getTimeSlots } from '@/lib/storage-supabase';
 import { supabase } from '@/lib/supabase';
 import { ChevronLeft, ChevronRight, Calendar, Users } from 'lucide-react';
 import { SyncIndicator } from '@/components/sync-indicator';
-import { DesktopSidebar } from '@/components/desktop-sidebar';
 
 const TIMEZONE = 'America/Argentina/Cordoba';
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -198,15 +197,7 @@ export function WeekView({ onDayClick }: WeekViewProps) {
   if (!user) return null;
 
   return (
-    <>
-      <DesktopSidebar 
-        user={user}
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
-        onLogout={handleLogout}
-      />
-      
-      <div className="h-full flex flex-col bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 lg:ml-64">
+      <div className="h-full flex flex-col bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800">
         <div className="lg:max-w-7xl lg:mx-auto lg:w-full lg:px-6 xl:px-8 flex flex-col h-full">
       <SyncIndicator isSyncing={isSyncing} />
       
@@ -341,6 +332,5 @@ export function WeekView({ onDayClick }: WeekViewProps) {
       </div>
         </div>
       </div>
-    </>
   );
 }

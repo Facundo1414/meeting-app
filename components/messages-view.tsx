@@ -27,7 +27,6 @@ import { getOptimizedImageUrl } from '@/lib/image-utils';
 import { ChatHeader } from '@/components/chat-header';
 import { MessageBubble } from '@/components/message-bubble';
 import { MessageInputBar } from '@/components/message-input-bar';
-import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { MessageSearch } from '@/components/message-search';
 import { TypingBubble } from '@/components/typing-indicator';
@@ -956,15 +955,7 @@ export function MessagesView() {
   };
 
   return (
-    <>
-      <DesktopSidebar 
-        user={user}
-        darkMode={darkMode}
-        onToggleDarkMode={toggleDarkMode}
-        onLogout={handleLogout}
-      />
-      
-      <div className="min-h-screen bg-[#111B21] flex flex-col lg:ml-64">
+      <div className="min-h-screen bg-[#111B21] flex flex-col">
         {/* Desktop wrapper para centrar el contenido del chat */}
         <div className="flex-1 flex flex-col lg:max-w-5xl lg:mx-auto lg:w-full lg:border-x lg:border-[#2A3942]">
       {/* Header - Sticky */}
@@ -1295,6 +1286,5 @@ export function MessagesView() {
       )}
         </div>
       </div>
-    </>
   );
 }

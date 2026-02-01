@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, FormEvent, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Lock, Eye, EyeOff, Image } from 'lucide-react';
+import { Lock, Eye, EyeOff, Image, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface GalleryPasswordGateProps {
@@ -22,6 +23,7 @@ export function GalleryPasswordGate({ onUnlock }: GalleryPasswordGateProps) {
   const [shake, setShake] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const router = useRouter();
 
   // Verificar si ya está desbloqueado al cargar
   useEffect(() => {
@@ -91,8 +93,18 @@ export function GalleryPasswordGate({ onUnlock }: GalleryPasswordGateProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
       <div className="w-full max-w-md">
+        {/* Botón volver atrás */}
+        <Button
+          variant="ghost"
+          onClick={() => router.back()}
+          className="mb-4 gap-2 text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Volver
+        </Button>
+        
         <Card className={`relative z-10 shadow-2xl border-2 ${shake ? 'animate-shake' : ''}`}>
           <CardHeader className="space-y-3 pb-6 text-center">
             <div className="mx-auto w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mb-2">
