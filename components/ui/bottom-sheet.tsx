@@ -81,7 +81,7 @@ export function BottomSheet({ isOpen, onClose, title, children }: BottomSheetPro
 
             {/* Content */}
             <div className={`overflow-y-auto p-4 md:p-5 ${
-              isDesktop ? 'max-h-[calc(80vh-80px)]' : 'max-h-[calc(90vh-100px)]'
+              isDesktop ? 'max-h-[calc(80vh-80px)]' : 'max-h-[calc(90vh-100px)] pb-20'
             }`}>
               {children}
             </div>
